@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Bonsai</title>
+    <language>en</language>
+    <item>
+      <title>1.0.2</title>
+      <pubDate>Fri, 14 Aug 2026 14:42:31 +0800</pubDate>
+      <sparkle:version>1.0.2</sparkle:version>
+      <sparkle:shortVersionString>1.0.2</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[Save dialog for copies, before/after preview in its own window, UI polish.]]></description>
+      <enclosure url="https://github.com/finkoegor/Bonsai/releases/download/v1.0.2/Bonsai-1.0.2.zip" sparkle:edSignature="+Q6DYWCPiozCtZ+JJe4Gp26WqfDNw6gLdHc0JZErH3J+QxE4XzNTbzeCWbqEkf5ZMJFwB9RSIvyMpY/nzjlKAQ==" length="1922423" type="application/octet-stream"/>
+    </item>
+  </channel>
+</rss>
