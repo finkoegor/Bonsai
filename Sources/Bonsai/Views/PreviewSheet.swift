@@ -63,7 +63,7 @@ struct PreviewSheet: View {
             Spacer()
             if item.pageCount > 1 { pager }
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, Layout.inset)
         .padding(.vertical, 12)
         .background(theme.surface)
         .overlay(alignment: .bottom) { Rectangle().fill(theme.border).frame(height: 1) }
@@ -214,7 +214,7 @@ struct PreviewSheet: View {
                     .foregroundStyle(est.keptOriginal ? theme.text2 : theme.success)
             }
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, Layout.inset)
         .padding(.vertical, 13)
         .background(theme.surface)
         .overlay(alignment: .top) { Rectangle().fill(theme.border).frame(height: 1) }

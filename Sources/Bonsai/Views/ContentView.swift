@@ -79,7 +79,7 @@ struct ContentView: View {
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .fill(theme.accentSoft.opacity(state.isDropTargeted ? 1 : 0))
                 )
-                .padding(16)
+                .padding(Layout.inset)
                 .allowsHitTesting(false)
                 .animation(.spring(response: 0.3, dampingFraction: 0.8), value: state.isDropTargeted)
         }

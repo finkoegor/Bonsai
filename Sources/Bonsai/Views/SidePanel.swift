@@ -34,8 +34,7 @@ struct SidePanel: View {
 
             bottomSection
         }
-        .padding(24)
-        .padding(.top, 8)
+        .padding(Layout.inset)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(theme.surface)
     }

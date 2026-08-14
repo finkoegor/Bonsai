@@ -20,7 +20,7 @@ struct FileGrid: View {
                     }
                     addTile
                 }
-                .padding(24)
+                .padding(Layout.inset)
                 .padding(.bottom, 12)
             }
         }
@@ -50,11 +50,11 @@ struct FileGrid: View {
             .disabled(state.isCompressing)
             .opacity(state.isCompressing ? 0.4 : 1)
         }
-        // Same vertical axis as the side panel header: 32pt top offset plus a
-        // 40pt row, so both header rows center at 52pt from the window top.
-        .frame(height: 40)
-        .padding(.horizontal, 26)
-        .padding(.top, 32)
+        // Same vertical axis as the side panel header: both sit on the 24pt
+        // grid with a 40pt row, so their centers align across the divider.
+        .frame(height: Layout.headerHeight)
+        .padding(.horizontal, Layout.inset)
+        .padding(.top, Layout.inset)
         .padding(.bottom, 4)
     }
 

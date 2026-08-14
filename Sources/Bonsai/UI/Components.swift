@@ -1,5 +1,15 @@
 import SwiftUI
 
+// MARK: - Layout tokens
+// One spacing grid for the whole window: every container (side panel insets,
+// drop-zone frame, list header, grid padding) sits on the same 24pt rhythm,
+// and both header rows share one 40pt-tall axis.
+
+enum Layout {
+    static let inset: CGFloat = 24
+    static let headerHeight: CGFloat = 40
+}
+
 // MARK: - Hover tracking
 
 struct HoverScale: ViewModifier {
