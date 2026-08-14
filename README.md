@@ -47,7 +47,15 @@ There is also a visual safety net: every compressed page is rendered with Apple'
 
 ## Install
 
-Grab the zip from the [latest release](https://github.com/finkoegor/Bonsai/releases/latest), unzip and drop Bonsai.app into /Applications. The build is not notarized, so the first launch is right-click, then Open. After that the app keeps itself fresh: updates arrive via Sparkle, signed with EdDSA.
+Grab the zip from the [latest release](https://github.com/finkoegor/Bonsai/releases/latest), unzip and drop Bonsai.app into /Applications.
+
+The build is not notarized by Apple, so macOS will block the first launch. Either allow it in System Settings, Privacy and Security, "Open Anyway", or clear the quarantine flag in Terminal:
+
+```bash
+xattr -d com.apple.quarantine /Applications/Bonsai.app
+```
+
+This is a one-time step. After that the app keeps itself fresh: updates arrive via Sparkle, signed with EdDSA, and never retrigger the prompt.
 
 Or build from source:
 
