@@ -4,6 +4,15 @@
     <title>Bonsai</title>
     <language>en</language>
     <item>
+      <title>1.0.3</title>
+      <pubDate>Fri, 14 Aug 2026 16:11:06 +0800</pubDate>
+      <sparkle:version>1.0.3</sparkle:version>
+      <sparkle:shortVersionString>1.0.3</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[Consistent 24pt layout grid across all states, aligned headers, unified preview window chrome.]]></description>
+      <enclosure url="https://github.com/finkoegor/Bonsai/releases/download/v1.0.3/Bonsai-1.0.3.zip" sparkle:edSignature="OZfBEM7h+PGKVMwk/TuUhsNrUsS7ltdNwT+GbhGQW5+4KSJI9lgCohfDsM5regmIxCQs81jHlDHUnZtC1bLWAg==" length="1922154" type="application/octet-stream"/>
+    </item>
+    <item>
       <title>1.0.2</title>
       <pubDate>Fri, 14 Aug 2026 14:42:31 +0800</pubDate>
       <sparkle:version>1.0.2</sparkle:version>
