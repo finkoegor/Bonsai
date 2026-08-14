@@ -75,4 +75,6 @@ First launch from `~/Desktop` or `~/Documents` will ask for folder access. That'
 
 ## License
 
-MIT © 2026 Egor Finko. Ghostscript is a separate AGPL-licensed program invoked as an external process; install it via Homebrew.
+MIT © 2026 Egor Finko.
+
+Third-party: [Sparkle](https://github.com/sparkle-project/Sparkle) (permissive, bundled) powers updates; icons are [Unicons by Iconscout](https://github.com/Iconscout/unicons) (IconScout Simple License); [Ghostscript](https://ghostscript.com) (AGPL) and [qpdf](https://github.com/qpdf/qpdf) (Apache 2.0) are separate programs invoked as external processes when installed via Homebrew, they are not distributed with the app.
