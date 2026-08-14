@@ -1,0 +1,10 @@
+.build/
+
+
+
+Build/Bonsai.app
+Build/AppIcon.iconset/
+.DS_Store
+
+Build/appicon-preview.png
+Build/Bonsai-*.zip
