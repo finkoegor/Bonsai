@@ -4,8 +4,7 @@
 
 Bonsai is a tiny native macOS app that shrinks PDF files the way the big web services do, except everything happens locally. No uploads, no accounts, no size limits, no subscription. Drop files, see exact savings before you commit, press one button.
 
-![Bonsai, day theme](docs/bonsai-day.png)
-![Bonsai, night theme](docs/bonsai-night.png)
+![Bonsai](docs/bonsai.png)
 
 ## Why another PDF compressor?
 
