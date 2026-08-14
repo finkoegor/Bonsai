@@ -50,8 +50,11 @@ struct FileGrid: View {
             .disabled(state.isCompressing)
             .opacity(state.isCompressing ? 0.4 : 1)
         }
+        // Same vertical axis as the side panel header: 32pt top offset plus a
+        // 40pt row, so both header rows center at 52pt from the window top.
+        .frame(height: 40)
         .padding(.horizontal, 26)
-        .padding(.top, 44)   // room for traffic lights (hidden title bar)
+        .padding(.top, 32)
         .padding(.bottom, 4)
     }
 
