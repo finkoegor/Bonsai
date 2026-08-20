@@ -211,6 +211,10 @@ enum Compressor {
         //    original page bytes; they are vector-heavy and cost almost nothing.
         if let gs = ghostscriptURL {
             if let out = runGhostscript(gs, input: url, preset: preset, dir: dir) {
+                // pdfwrite emits `h` (closepath) with no current point. Apple's
+                // renderer shrugs; spec-strict ones (poppler, Telegram's viewer)
+                // abort the whole page and show it blank. Strip the no-op.
+                repairDegenerateClosepaths(out, dir: dir)
                 if revertVisuallyBrokenPages(original: doc, originalURL: url, outputURL: out, dir: dir) {
                     consider(out)
                 } else {
@@ -345,6 +349,167 @@ enum Compressor {
     private static func isValidPDF(_ url: URL, expectedPages: Int) -> Bool {
         guard let doc = PDFDocument(url: url) else { return false }
         return doc.pageCount == expectedPages
+    }
+
+    // MARK: - Content-stream repair
+
+    /// Ghostscript's pdfwrite writes `h` (closepath) between a painting op and
+    /// the next `m` — an operator that is illegal without a current point.
+    /// Removing it changes nothing semantically (closing an empty path), but
+    /// keeps strict renderers from dropping the page. Needs qpdf: the file is
+    /// unpacked to QDF, single `h` tokens with no open subpath are blanked
+    /// byte-for-byte (stream lengths stay valid), then repacked.
+    private static func repairDegenerateClosepaths(_ pdf: URL, dir: URL) {
+        guard let qpdf = qpdfURL else { return }
+        let qdf = dir.appendingPathComponent(UUID().uuidString + "-qdf.pdf")
+        let packed = dir.appendingPathComponent(UUID().uuidString + "-fixed.pdf")
+        defer {
+            try? FileManager.default.removeItem(at: qdf)
+            try? FileManager.default.removeItem(at: packed)
+        }
+
+        guard runQpdf(qpdf, ["--qdf", "--object-streams=disable", pdf.path, qdf.path]),
+              var bytes = try? [UInt8](Data(contentsOf: qdf)) else { return }
+
+        var fixed = 0
+        var searchFrom = 0
+        let streamMark = [UInt8]("stream".utf8), endMark = [UInt8]("endstream".utf8)
+        while let start = find(streamMark, in: bytes, from: searchFrom) {
+            var bodyStart = start + streamMark.count
+            if bodyStart < bytes.count, bytes[bodyStart] == 0x0D { bodyStart += 1 }
+            if bodyStart < bytes.count, bytes[bodyStart] == 0x0A { bodyStart += 1 }
+            guard let end = find(endMark, in: bytes, from: bodyStart) else { break }
+            searchFrom = end + endMark.count
+            fixed += stripBareClosepaths(&bytes, from: bodyStart, to: end)
+        }
+        guard fixed > 0 else { return }
+
+        guard (try? Data(bytes).write(to: qdf)) != nil,
+              runQpdf(qpdf, ["--object-streams=generate", "--compress-streams=y",
+                             "--recompress-flate", qdf.path, packed.path]),
+              FileManager.default.fileExists(atPath: packed.path) else { return }
+        _ = try? FileManager.default.replaceItemAt(pdf, withItemAt: packed)
+    }
+
+    private static func find(_ needle: [UInt8], in hay: [UInt8], from: Int) -> Int? {
+        guard !needle.isEmpty, from + needle.count <= hay.count else { return nil }
+        var i = from
+        let limit = hay.count - needle.count
+        while i <= limit {
+            if hay[i] == needle[0] {
+                var j = 1
+                while j < needle.count, hay[i + j] == needle[j] { j += 1 }
+                if j == needle.count { return i }
+            }
+            i += 1
+        }
+        return nil
+    }
+
+    /// Lexes one stream body (only if it looks like ASCII operators), tracking
+    /// whether a subpath is open; a lone `h` with no current point is blanked.
+    /// Strings, hex strings, comments and inline images are skipped verbatim.
+    private static func stripBareClosepaths(_ bytes: inout [UInt8], from: Int, to end: Int) -> Int {
+        // content streams are overwhelmingly printable; image data is not
+        let sampleEnd = min(from + 4096, end)
+        guard sampleEnd > from else { return 0 }
+        var printable = 0
+        for i in from..<sampleEnd {
+            let b = bytes[i]
+            if (32..<127).contains(b) || b == 9 || b == 10 || b == 13 { printable += 1 }
+        }
+        guard Double(printable) / Double(sampleEnd - from) >= 0.9 else { return 0 }
+
+        func isDelim(_ b: UInt8) -> Bool {
+            switch b {
+            case 0, 9, 10, 12, 13, 32, 0x28, 0x29, 0x3C, 0x3E, 0x5B, 0x5D,
+                 0x7B, 0x7D, 0x2F, 0x25: return true
+            default: return false
+            }
+        }
+
+        var i = from
+        var hasPoint = false
+        var fixed = 0
+        while i < end {
+            let b = bytes[i]
+            if b == 0x25 {                       // % comment
+                while i < end, bytes[i] != 0x0A, bytes[i] != 0x0D { i += 1 }
+                continue
+            }
+            if b == 0x28 {                       // ( literal string
+                var depth = 1
+                i += 1
+                while i < end, depth > 0 {
+                    let c = bytes[i]
+                    if c == 0x5C { i += 2; continue }
+                    if c == 0x28 { depth += 1 } else if c == 0x29 { depth -= 1 }
+                    i += 1
+                }
+                continue
+            }
+            if b == 0x3C {                       // <hex> or << dict
+                if i + 1 < end, bytes[i + 1] == 0x3C { i += 2; continue }
+                while i < end, bytes[i] != 0x3E { i += 1 }
+                i += 1
+                continue
+            }
+            if isDelim(b) { i += 1; continue }
+
+            let tokStart = i
+            while i < end, !isDelim(bytes[i]) { i += 1 }
+            let len = i - tokStart
+
+            if len == 2, bytes[tokStart] == 0x42, bytes[tokStart + 1] == 0x49 {
+                // BI ... ID <binary> EI — skip the whole inline image
+                while i < end {
+                    if bytes[i] == 0x45, i + 1 < end, bytes[i + 1] == 0x49,
+                       isDelim(bytes[i - 1]), i + 2 >= end || isDelim(bytes[i + 2]) {
+                        i += 2
+                        break
+                    }
+                    i += 1
+                }
+                continue
+            }
+
+            if len == 1 {
+                switch bytes[tokStart] {
+                case 0x6D, 0x6C, 0x63, 0x76, 0x79:        // m l c v y
+                    hasPoint = true
+                case 0x66, 0x46, 0x53, 0x73, 0x6E, 0x62, 0x42:  // f F S s n b B
+                    hasPoint = false
+                case 0x68:                                 // h
+                    if !hasPoint {
+                        bytes[tokStart] = 0x20
+                        fixed += 1
+                    }
+                default: break
+                }
+            } else if len == 2 {
+                let a = bytes[tokStart], c = bytes[tokStart + 1]
+                if a == 0x72, c == 0x65 { hasPoint = true }             // re
+                else if c == 0x2A, a == 0x66 || a == 0x42 || a == 0x62 { // f* B* b*
+                    hasPoint = false
+                }
+            }
+        }
+        return fixed
+    }
+
+    private static func runQpdf(_ qpdf: URL, _ args: [String]) -> Bool {
+        let proc = Process()
+        proc.executableURL = qpdf
+        proc.arguments = args
+        proc.standardOutput = FileHandle.nullDevice
+        proc.standardError = FileHandle.nullDevice
+        do { try proc.run() } catch { return false }
+        let watchdog = DispatchWorkItem { if proc.isRunning { proc.terminate() } }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 300, execute: watchdog)
+        proc.waitUntilExit()
+        watchdog.cancel()
+        // qpdf exits 3 on warnings but still writes valid output
+        return proc.terminationStatus == 0 || proc.terminationStatus == 3
     }
 
     // MARK: - Visual safety net
