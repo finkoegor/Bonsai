@@ -506,7 +506,10 @@ enum Compressor {
             let dictBytes = Array(bytes[(objAt + objMark.count)..<streamKw])
             guard let dict = String(bytes: dictBytes, encoding: .isoLatin1),
                   dict.contains("/Subtype /Image"),
-                  dict.contains("/Filter /DCTDecode"),
+                  // pure JPEG payload: DCT alone, either as a name or a
+                  // one-element array; skip flate-wrapped or exotic chains
+                  dict.contains("/DCTDecode"),
+                  !dict.contains("/FlateDecode"),
                   !dict.contains("/ImageMask true") else { continue }
             guard let w = intValue(after: "/Width ", in: dict),
                   let h = intValue(after: "/Height ", in: dict),
