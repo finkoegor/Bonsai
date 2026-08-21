@@ -209,16 +209,64 @@ enum Compressor {
         //    form Ghostscript itself renders fine but Preview/PDFKit renders as
         //    flat or black fills. Visually broken pages are reverted to the
         //    original page bytes; they are vector-heavy and cost almost nothing.
+        func elog(_ s: String) {
+            guard let path = ProcessInfo.processInfo.environment["BONSAI_ENGINE_LOG"] else { return }
+            let line = "[\(preset.rawValue)] \(s)\n"
+            if let h = FileHandle(forWritingAtPath: path) {
+                h.seekToEndOfFile(); h.write(line.data(using: .utf8)!); try? h.close()
+            } else {
+                try? line.write(toFile: path, atomically: false, encoding: .utf8)
+            }
+        }
+
         if let gs = ghostscriptURL {
+            var revertedPages = 0
             if let out = runGhostscript(gs, input: url, preset: preset, dir: dir) {
                 // pdfwrite emits `h` (closepath) with no current point. Apple's
                 // renderer shrugs; spec-strict ones (poppler, Telegram's viewer)
                 // abort the whole page and show it blank. Strip the no-op.
                 repairDegenerateClosepaths(out, dir: dir)
-                if revertVisuallyBrokenPages(original: doc, originalURL: url, outputURL: out, dir: dir) {
+                if revertVisuallyBrokenPages(original: doc, originalURL: url, outputURL: out,
+                                             dir: dir, revertedCount: &revertedPages) {
+                    elog("normal gs ok, reverted \(revertedPages)/\(pages)")
                     consider(out)
                 } else {
+                    revertedPages = pages   // unusable output: treat as fully broken
+                    elog("normal gs net FAILED")
                     try? FileManager.default.removeItem(at: out)
+                }
+            } else {
+                elog("normal gs returned nil")
+            }
+
+            // Rescue tier for transparency-heavy design exports: when pdfwrite's
+            // normal output breaks Apple's renderer on most pages, the safety net
+            // reverts them and no real compression happens. Flattening (PDF 1.3)
+            // rasterizes the transparent composites at the preset's DPI while
+            // text outside transparency groups stays vector, and the result
+            // renders identically in every viewer, including mobile ones.
+            // Flatten when the source leans on transparency (soft-masked images,
+            // transparency groups): pdfwrite's rewrite of those constructs renders
+            // fine in macOS Preview yet blanks out on iOS renderers (Telegram and
+            // friends), which we cannot detect locally. Flattened output is plain
+            // raster + vector text and renders identically everywhere; consider()
+            // still picks the smaller valid candidate.
+            if hasTransparency(doc) || revertedPages * 2 > pages {
+                elog("rescue: flattening")
+                if let flat = runGhostscript(gs, input: url, preset: preset, dir: dir, flatten: true) {
+                    repairDegenerateClosepaths(flat, dir: dir)
+                    var flatReverted = 0
+                    if revertVisuallyBrokenPages(original: doc, originalURL: url, outputURL: flat,
+                                                 dir: dir, revertedCount: &flatReverted) {
+                        let sz = (try? flat.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1
+                        elog("rescue ok, reverted \(flatReverted)/\(pages), size \(sz)")
+                        consider(flat)
+                    } else {
+                        elog("rescue net FAILED")
+                        try? FileManager.default.removeItem(at: flat)
+                    }
+                } else {
+                    elog("rescue gs returned nil")
                 }
             }
         }
@@ -254,7 +302,8 @@ enum Compressor {
 
     // MARK: - Backend: Ghostscript
 
-    private static func runGhostscript(_ gs: URL, input: URL, preset: Preset, dir: URL) -> URL? {
+    private static func runGhostscript(_ gs: URL, input: URL, preset: Preset,
+                                       dir: URL, flatten: Bool = false) -> URL? {
         let p = preset.params
         let out = dir.appendingPathComponent(UUID().uuidString + ".pdf")
         let monoDPI = max(300, p.dpi * 3)
@@ -271,9 +320,15 @@ enum Compressor {
 
         let proc = Process()
         proc.executableURL = gs
-        proc.arguments = [
+        // Flatten mode targets PDF 1.3: no transparency allowed, so gs
+        // rasterizes transparent composites at -r DPI. Text outside
+        // transparency groups stays vector.
+        var args = [
             "-sDEVICE=pdfwrite",
-            "-dCompatibilityLevel=1.7",
+            flatten ? "-dCompatibilityLevel=1.3" : "-dCompatibilityLevel=1.7",
+        ]
+        if flatten { args.append("-r\(p.dpi)") }
+        proc.arguments = args + [
             "-dNOPAUSE", "-dBATCH", "-dQUIET",
             "-dAutoRotatePages=/None",
             "-dDetectDuplicateImages=true",
@@ -349,6 +404,56 @@ enum Compressor {
     private static func isValidPDF(_ url: URL, expectedPages: Int) -> Bool {
         guard let doc = PDFDocument(url: url) else { return false }
         return doc.pageCount == expectedPages
+    }
+
+    // MARK: - Transparency detection
+
+    /// True when any of the first pages carries a transparency group or a
+    /// soft-masked image — the constructs whose pdfwrite rewrite breaks
+    /// iOS renderers.
+    private static func hasTransparency(_ doc: PDFDocument) -> Bool {
+        guard let cg = doc.documentRef else { return false }
+        let pageLimit = min(cg.numberOfPages, 20)
+        guard pageLimit >= 1 else { return false }
+        for i in 1...pageLimit {
+            guard let page = cg.page(at: i), let dict = page.dictionary else { continue }
+            var group: CGPDFDictionaryRef?
+            if CGPDFDictionaryGetDictionary(dict, "Group", &group) { return true }
+            var res: CGPDFDictionaryRef?
+            if CGPDFDictionaryGetDictionary(dict, "Resources", &res), let res,
+               resourcesHaveTransparency(res, depth: 0) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func resourcesHaveTransparency(_ res: CGPDFDictionaryRef, depth: Int) -> Bool {
+        guard depth < 4 else { return false }
+        var xobj: CGPDFDictionaryRef?
+        guard CGPDFDictionaryGetDictionary(res, "XObject", &xobj), let xobj else { return false }
+        final class Ctx { var found = false; var depth = 0 }
+        let ctx = Ctx()
+        ctx.depth = depth
+        CGPDFDictionaryApplyBlock(xobj, { _, value, info in
+            let ctx = Unmanaged<Ctx>.fromOpaque(info!).takeUnretainedValue()
+            if ctx.found { return false }
+            var stream: CGPDFStreamRef?
+            guard CGPDFObjectGetValue(value, .stream, &stream), let stream,
+                  let sdict = CGPDFStreamGetDictionary(stream) else { return true }
+            var smask: CGPDFStreamRef?
+            if CGPDFDictionaryGetStream(sdict, "SMask", &smask) { ctx.found = true; return false }
+            var group: CGPDFDictionaryRef?
+            if CGPDFDictionaryGetDictionary(sdict, "Group", &group) { ctx.found = true; return false }
+            var inner: CGPDFDictionaryRef?
+            if CGPDFDictionaryGetDictionary(sdict, "Resources", &inner), let inner,
+               resourcesHaveTransparency(inner, depth: ctx.depth + 1) {
+                ctx.found = true
+                return false
+            }
+            return true
+        }, Unmanaged.passUnretained(ctx).toOpaque())
+        return ctx.found
     }
 
     // MARK: - Content-stream repair
@@ -523,7 +628,9 @@ enum Compressor {
     private static let tileDeltaThreshold = 48.0
 
     private static func revertVisuallyBrokenPages(original: PDFDocument, originalURL: URL,
-                                                  outputURL: URL, dir: URL) -> Bool {
+                                                  outputURL: URL, dir: URL,
+                                                  revertedCount: inout Int) -> Bool {
+        revertedCount = 0
         guard let out = PDFDocument(url: outputURL),
               out.pageCount == original.pageCount else { return false }
 
@@ -537,6 +644,7 @@ enum Compressor {
         }
 
         guard let broken = brokenPages(out) else { return false }
+        revertedCount = broken.count
         if broken.isEmpty { return true }
 
         // Preferred: splice with qpdf — byte-exact page copies, no inflation.
