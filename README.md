@@ -43,6 +43,8 @@ Bonsai has two compression backends and always delivers the smallest valid resul
 
 Either way the output is validated (readable, same page count) and compared against the original; the worse result is discarded. Ghostscript runs as a separate process, so the app itself stays MIT-licensed.
 
+For transparency-heavy design exports (Figma, Sketch, Keynote decks) Bonsai switches to a structure-preserving mode: page content, text, vectors and transparency stay byte-identical, only oversized embedded JPEGs are decoded, downsampled and re-encoded in place. Such files render exactly like the original in every viewer, including mobile ones, which choke on rewritten transparency.
+
 There is also a visual safety net: every compressed page is rendered with Apple's own PDF renderer and compared against the original (5x5 tile color means). Pages that come out structurally different, for example soft-masked mesh gradients that Ghostscript re-serializes in a way Preview renders as flat or black fills, are spliced back byte-exact from the original file using qpdf. You keep the compression on every healthy page and the original pixels on the fragile ones.
 
 ## Install

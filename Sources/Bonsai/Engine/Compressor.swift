@@ -1,6 +1,8 @@
 import Foundation
 import PDFKit
 import Quartz
+import ImageIO
+import UniformTypeIdentifiers
 
 /// Compression presets. Numbers tuned on real files (Tools/bench.swift, bench2.swift).
 /// `low` targets visually-lossless photos; text and vectors are never rasterized
@@ -219,7 +221,27 @@ enum Compressor {
             }
         }
 
-        if let gs = ghostscriptURL {
+        // Transparency-heavy sources: never let Ghostscript rewrite the page
+        // structure (renders fine on macOS, blanks out on iOS viewers).
+        // Surgically recompress only the image bytes instead.
+        let transparent = hasTransparency(doc)
+        if transparent {
+            if let surgical = surgicalCompress(url, preset: preset, dir: dir) {
+                var surgicalReverted = 0
+                if revertVisuallyBrokenPages(original: doc, originalURL: url, outputURL: surgical,
+                                             dir: dir, revertedCount: &surgicalReverted) {
+                    elog("surgical ok, reverted \(surgicalReverted)/\(pages)")
+                    consider(surgical)
+                } else {
+                    elog("surgical net FAILED")
+                    try? FileManager.default.removeItem(at: surgical)
+                }
+            } else {
+                elog("surgical returned nil")
+            }
+        }
+
+        if let gs = ghostscriptURL, !transparent || best == nil {
             var revertedPages = 0
             if let out = runGhostscript(gs, input: url, preset: preset, dir: dir) {
                 // pdfwrite emits `h` (closepath) with no current point. Apple's
@@ -251,7 +273,7 @@ enum Compressor {
             // friends), which we cannot detect locally. Flattened output is plain
             // raster + vector text and renders identically everywhere; consider()
             // still picks the smaller valid candidate.
-            if hasTransparency(doc) || revertedPages * 2 > pages {
+            if transparent || revertedPages * 2 > pages {
                 elog("rescue: flattening")
                 if let flat = runGhostscript(gs, input: url, preset: preset, dir: dir, flatten: true) {
                     repairDegenerateClosepaths(flat, dir: dir)
@@ -406,7 +428,170 @@ enum Compressor {
         return doc.pageCount == expectedPages
     }
 
-    // MARK: - Transparency detection
+    // MARK: - Surgical image-only compression
+    // For transparency-heavy sources (Figma/Sketch/Keynote exports) any
+    // Ghostscript rewrite of the page structure renders fine on macOS but
+    // blanks out on iOS viewers (Telegram and friends). So for those files we
+    // never let gs touch the structure at all: the file is unpacked to QDF,
+    // oversized DCT (JPEG) image streams are decoded, downsampled and
+    // re-encoded in place, fix-qdf recomputes offsets/lengths, and qpdf packs
+    // the result. Everything else - vectors, text, transparency, structure -
+    // stays byte-identical, so it renders exactly like the original everywhere.
+
+    /// Max image dimension and JPEG quality for the surgical path.
+    private static func surgicalParams(_ preset: Preset) -> (maxDim: Int, quality: CGFloat) {
+        switch preset {
+        case .low: (3000, 0.82)
+        case .recommended: (2000, 0.68)
+        case .extreme: (1300, 0.50)
+        }
+    }
+
+    private static func surgicalCompress(_ url: URL, preset: Preset, dir: URL) -> URL? {
+        guard let qpdf = qpdfURL else { return nil }
+        let fixQdf = qpdf.deletingLastPathComponent().appendingPathComponent("fix-qdf")
+        guard FileManager.default.isExecutableFile(atPath: fixQdf.path) else { return nil }
+
+        let qdf = dir.appendingPathComponent(UUID().uuidString + "-sq.pdf")
+        let edited = dir.appendingPathComponent(UUID().uuidString + "-se.pdf")
+        let fixed = dir.appendingPathComponent(UUID().uuidString + "-sf.pdf")
+        let out = dir.appendingPathComponent(UUID().uuidString + ".pdf")
+        defer {
+            for f in [qdf, edited, fixed] { try? FileManager.default.removeItem(at: f) }
+        }
+
+        guard runQpdf(qpdf, ["--qdf", "--object-streams=disable", url.path, qdf.path]),
+              let data = try? Data(contentsOf: qdf) else { return nil }
+
+        let p = surgicalParams(preset)
+        guard let editedData = rewriteOversizedImages(data, maxDim: p.maxDim, quality: p.quality),
+              (try? editedData.write(to: edited)) != nil else { return nil }
+
+        // fix-qdf reads the edited file and regenerates xref offsets and the
+        // indirect /Length objects our replacements invalidated.
+        let proc = Process()
+        proc.executableURL = fixQdf
+        proc.arguments = [edited.path]
+        FileManager.default.createFile(atPath: fixed.path, contents: nil)
+        guard let outHandle = try? FileHandle(forWritingTo: fixed) else { return nil }
+        proc.standardOutput = outHandle
+        proc.standardError = FileHandle.nullDevice
+        do { try proc.run() } catch { return nil }
+        proc.waitUntilExit()
+        try? outHandle.close()
+        guard proc.terminationStatus == 0 else { return nil }
+
+        guard runQpdf(qpdf, ["--object-streams=generate", "--compress-streams=y", fixed.path, out.path]),
+              FileManager.default.fileExists(atPath: out.path) else { return nil }
+        return out
+    }
+
+    /// Scans a QDF byte buffer for `/Subtype /Image` objects with a pure
+    /// DCTDecode filter and replaces oversized payloads with downsampled JPEGs.
+    /// Returns nil when nothing was replaced.
+    private static func rewriteOversizedImages(_ data: Data, maxDim: Int, quality: CGFloat) -> Data? {
+        let bytes = [UInt8](data)
+        var result = Data(capacity: data.count)
+        var pos = 0
+        var replaced = 0
+
+        var searchFrom = 0
+        let objMark = [UInt8](" 0 obj".utf8)
+        while let objAt = find(objMark, in: bytes, from: searchFrom) {
+            searchFrom = objAt + objMark.count
+            guard objAt >= pos else { continue }   // never re-enter consumed bytes
+            // dict spans from after " 0 obj" to "stream" keyword (if any)
+            guard let streamKw = find([UInt8]("stream".utf8), in: bytes, from: objAt),
+                  streamKw - objAt < 4096 else { continue }
+            let dictBytes = Array(bytes[(objAt + objMark.count)..<streamKw])
+            guard let dict = String(bytes: dictBytes, encoding: .isoLatin1),
+                  dict.contains("/Subtype /Image"),
+                  dict.contains("/Filter /DCTDecode"),
+                  !dict.contains("/ImageMask true") else { continue }
+            guard let w = intValue(after: "/Width ", in: dict),
+                  let h = intValue(after: "/Height ", in: dict),
+                  max(w, h) > maxDim,
+                  let lengthRef = intValue(after: "/Length ", in: dict),
+                  let length = resolveIndirectLength(dict: dict, ref: lengthRef, in: bytes)
+            else { continue }
+
+            var payloadStart = streamKw + 6
+            if payloadStart < bytes.count, bytes[payloadStart] == 0x0D { payloadStart += 1 }
+            if payloadStart < bytes.count, bytes[payloadStart] == 0x0A { payloadStart += 1 }
+            guard payloadStart + length <= bytes.count else { continue }
+            let payload = data.subdata(in: payloadStart..<(payloadStart + length))
+
+            guard let (smaller, nw, nh) = downsampledJPEG(payload, maxDim: maxDim, quality: quality),
+                  smaller.count < length else { continue }
+
+            var newDict = dict
+            newDict = newDict.replacingOccurrences(of: "/Width \(w)", with: "/Width \(nw)")
+            newDict = newDict.replacingOccurrences(of: "/Height \(h)", with: "/Height \(nh)")
+
+            // copy everything up to the object dict, then the patched object
+            result.append(data.subdata(in: pos..<(objAt + objMark.count)))
+            result.append(newDict.data(using: .isoLatin1)!)
+            result.append(Data("stream\n".utf8))
+            result.append(smaller)
+            pos = payloadStart + length
+            searchFrom = pos
+            replaced += 1
+        }
+        guard replaced > 0 else { return nil }
+        result.append(data.subdata(in: pos..<data.count))
+        return result
+    }
+
+    private static func intValue(after key: String, in dict: String) -> Int? {
+        guard let r = dict.range(of: key) else { return nil }
+        let tail = dict[r.upperBound...]
+        let digits = tail.prefix { $0.isNumber }
+        return Int(digits)
+    }
+
+    /// QDF stores stream lengths as indirect objects: `/Length N 0 R` with
+    /// `N 0 obj <int> endobj` nearby. Returns the int, or the ref itself when
+    /// the length happened to be direct.
+    private static func resolveIndirectLength(dict: String, ref: Int, in bytes: [UInt8]) -> Int? {
+        guard dict.contains("/Length \(ref) 0 R") else { return ref }   // direct length
+        let marker = [UInt8]("\n\(ref) 0 obj".utf8)
+        guard let at = find(marker, in: bytes, from: 0) else { return nil }
+        var i = at + marker.count
+        while i < bytes.count, bytes[i] == 0x0A || bytes[i] == 0x0D || bytes[i] == 0x20 { i += 1 }
+        var value = 0
+        var any = false
+        while i < bytes.count, (0x30...0x39).contains(bytes[i]) {
+            value = value * 10 + Int(bytes[i] - 0x30)
+            any = true
+            i += 1
+        }
+        return any ? value : nil
+    }
+
+    /// Decode a JPEG payload, downsample so the longest side is `maxDim`,
+    /// re-encode. Returns the bytes plus the actual pixel size, or nil for
+    /// anything unusual (CMYK, undecodable).
+    private static func downsampledJPEG(_ payload: Data, maxDim: Int,
+                                        quality: CGFloat) -> (Data, Int, Int)? {
+        guard let src = CGImageSourceCreateWithData(payload as CFData, nil),
+              CGImageSourceGetCount(src) >= 1 else { return nil }
+        if let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
+           let model = props[kCGImagePropertyColorModel] as? String,
+           model == (kCGImagePropertyColorModelCMYK as String) {
+            return nil
+        }
+        let opts: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxDim,
+            kCGImageSourceCreateThumbnailWithTransform: false,
+        ]
+        guard let img = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+        let outData = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(outData, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dest, img, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else { return nil }
+        return (outData as Data, img.width, img.height)
+    }
 
     /// True when any of the first pages carries a transparency group or a
     /// soft-masked image — the constructs whose pdfwrite rewrite breaks
