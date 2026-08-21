@@ -72,7 +72,7 @@ The app lands in /Applications. After that, every plain `./build.sh` refreshes t
 Requires macOS 14+. For the strong engine:
 
 ```bash
-brew install ghostscript qpdf
+brew install ghostscript qpdf mozjpeg
 ```
 
 First launch from `~/Desktop` or `~/Documents` will ask for folder access. That's the standard macOS prompt; the app only ever reads the PDFs you give it.

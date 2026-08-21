@@ -100,9 +100,9 @@ struct SidePanel: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Button {
                     NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString("brew install ghostscript qpdf", forType: .string)
+                    NSPasteboard.general.setString("brew install ghostscript qpdf mozjpeg", forType: .string)
                 } label: {
-                    Text("brew install ghostscript qpdf")
+                    Text("brew install ghostscript qpdf mozjpeg")
                         .font(.system(size: 10.5, design: .monospaced))
                         .foregroundStyle(theme.accent)
                 }

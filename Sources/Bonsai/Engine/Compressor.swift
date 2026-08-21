@@ -241,7 +241,12 @@ enum Compressor {
             }
         }
 
-        if let gs = ghostscriptURL, !transparent || best == nil {
+        // Transparency files never take the gs paths at all: the structural
+        // rewrite blanks pages on iOS, and flattening rasterizes text. If the
+        // surgical pass produced nothing, the never-inflate guard below ships
+        // the original bytes back - an honest "nothing to win here".
+
+        if let gs = ghostscriptURL, !transparent {
             var revertedPages = 0
             if let out = runGhostscript(gs, input: url, preset: preset, dir: dir) {
                 // pdfwrite emits `h` (closepath) with no current point. Apple's
@@ -438,14 +443,30 @@ enum Compressor {
     // the result. Everything else - vectors, text, transparency, structure -
     // stays byte-identical, so it renders exactly like the original everywhere.
 
-    /// Max image dimension and JPEG quality for the surgical path.
-    private static func surgicalParams(_ preset: Preset) -> (maxDim: Int, quality: CGFloat) {
+    /// Max image dimension and JPEG quality (libjpeg 0-100 scale) for the
+    /// surgical path. Low/Recommended never resize: pixel dimensions stay as
+    /// exported (like the web compressors do) and the win comes purely from
+    /// re-encoding with mozjpeg. Only Extreme trades resolution for size.
+    private static func surgicalParams(_ preset: Preset) -> (maxDim: Int, quality: Int) {
         switch preset {
-        case .low: (3000, 0.82)
-        case .recommended: (2000, 0.68)
-        case .extreme: (1300, 0.50)
+        case .low: (8192, 82)
+        case .recommended: (8192, 70)
+        case .extreme: (2800, 55)
         }
     }
+
+    /// mozjpeg tools (brew install mozjpeg): dramatically better JPEG encoding
+    /// than ImageIO. Optional; the ImageIO path remains as fallback.
+    private static let mozjpegBin: URL? = {
+        for p in ["/opt/homebrew/opt/mozjpeg/bin", "/usr/local/opt/mozjpeg/bin"] {
+            let url = URL(fileURLWithPath: p)
+            if FileManager.default.isExecutableFile(atPath: url.appendingPathComponent("cjpeg").path),
+               FileManager.default.isExecutableFile(atPath: url.appendingPathComponent("djpeg").path) {
+                return url
+            }
+        }
+        return nil
+    }()
 
     private static func surgicalCompress(_ url: URL, preset: Preset, dir: URL) -> URL? {
         guard let qpdf = qpdfURL else { return nil }
@@ -464,8 +485,14 @@ enum Compressor {
               let data = try? Data(contentsOf: qdf) else { return nil }
 
         let p = surgicalParams(preset)
-        guard let editedData = rewriteOversizedImages(data, maxDim: p.maxDim, quality: p.quality),
-              (try? editedData.write(to: edited)) != nil else { return nil }
+        guard let editedData = rewriteOversizedImages(data, maxDim: p.maxDim, quality: p.quality) else {
+            // Nothing worth re-encoding (images already tight). The container
+            // pass alone still helps: qpdf drops unreferenced export junk and
+            // packs object streams; page content stays byte-identical.
+            return runQpdf(qpdf, ["--object-streams=generate", "--compress-streams=y",
+                                  url.path, out.path]) ? out : nil
+        }
+        guard (try? editedData.write(to: edited)) != nil else { return nil }
 
         // fix-qdf reads the edited file and regenerates xref offsets and the
         // indirect /Length objects our replacements invalidated.
@@ -489,7 +516,7 @@ enum Compressor {
     /// Scans a QDF byte buffer for `/Subtype /Image` objects with a pure
     /// DCTDecode filter and replaces oversized payloads with downsampled JPEGs.
     /// Returns nil when nothing was replaced.
-    private static func rewriteOversizedImages(_ data: Data, maxDim: Int, quality: CGFloat) -> Data? {
+    private static func rewriteOversizedImages(_ data: Data, maxDim: Int, quality: Int) -> Data? {
         let bytes = [UInt8](data)
         var result = Data(capacity: data.count)
         var pos = 0
@@ -513,7 +540,6 @@ enum Compressor {
                   !dict.contains("/ImageMask true") else { continue }
             guard let w = intValue(after: "/Width ", in: dict),
                   let h = intValue(after: "/Height ", in: dict),
-                  max(w, h) > maxDim,
                   let lengthRef = intValue(after: "/Length ", in: dict),
                   let length = resolveIndirectLength(dict: dict, ref: lengthRef, in: bytes)
             else { continue }
@@ -524,8 +550,16 @@ enum Compressor {
             guard payloadStart + length <= bytes.count else { continue }
             let payload = data.subdata(in: payloadStart..<(payloadStart + length))
 
-            guard let (smaller, nw, nh) = downsampledJPEG(payload, maxDim: maxDim, quality: quality),
-                  smaller.count < length else { continue }
+            // Never upscale; resize only above the cap. Keep the replacement
+            // only when it wins meaningfully, so already-tight JPEGs survive.
+            // Soft masks are smooth alpha ramps and take lower quality well.
+            if length < 50_000 { continue }   // not worth a re-encode round trip
+            let target = min(maxDim, max(w, h))
+            let isGray = dict.contains("/DeviceGray")
+            let q = isGray ? max(35, quality - 10) : quality
+            guard let (smaller, nw, nh) = reencodeJPEG(payload, srcMax: max(w, h),
+                                                       maxDim: target, quality: q),
+                  smaller.count < Int(Double(length) * 0.92) else { continue }
 
             var newDict = dict
             newDict = newDict.replacingOccurrences(of: "/Width \(w)", with: "/Width \(nw)")
@@ -569,6 +603,62 @@ enum Compressor {
             i += 1
         }
         return any ? value : nil
+    }
+
+    /// Re-encode a JPEG payload with mozjpeg when available (far better
+    /// rate/quality than ImageIO), falling back to the ImageIO path.
+    private static func reencodeJPEG(_ payload: Data, srcMax: Int,
+                                     maxDim: Int, quality: Int) -> (Data, Int, Int)? {
+        if let moz = mozjpegBin,
+           let r = mozjpegReencode(moz, payload, srcMax: srcMax, maxDim: maxDim, quality: quality) {
+            return r
+        }
+        return downsampledJPEG(payload, maxDim: maxDim, quality: CGFloat(quality) / 100.0)
+    }
+
+    /// djpeg [-scale n/8] -pnm | cjpeg -quality q -optimize
+    private static func mozjpegReencode(_ bin: URL, _ payload: Data, srcMax: Int,
+                                        maxDim: Int, quality: Int) -> (Data, Int, Int)? {
+        let fm = FileManager.default
+        let tmp = tempRoot.appendingPathComponent("moz-\(UUID().uuidString)")
+        try? fm.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: tmp) }
+        let inJpg = tmp.appendingPathComponent("in.jpg")
+        let pnm = tmp.appendingPathComponent("raw.pnm")
+        let outJpg = tmp.appendingPathComponent("out.jpg")
+        guard (try? payload.write(to: inJpg)) != nil else { return nil }
+
+        var dargs = ["-pnm"]
+        if srcMax > maxDim {
+            // djpeg scales in eighths during decode: pick the largest n/8 <= cap
+            let n = max(1, min(8, (maxDim * 8) / srcMax))
+            dargs += ["-scale", "\(n)/8"]
+        }
+        guard runTool(bin.appendingPathComponent("djpeg"), dargs + [inJpg.path], stdout: pnm),
+              runTool(bin.appendingPathComponent("cjpeg"),
+                      ["-quality", "\(quality)", "-optimize", pnm.path], stdout: outJpg),
+              let out = try? Data(contentsOf: outJpg), !out.isEmpty,
+              let header = try? FileHandle(forReadingFrom: pnm).read(upToCount: 64)
+        else { return nil }
+        // PNM header: P5|P6 <w> <h> <max>
+        let parts = String(decoding: header, as: UTF8.self)
+            .split(whereSeparator: { $0.isWhitespace }).prefix(3)
+        guard parts.count == 3, let nw = Int(parts[1]), let nh = Int(parts[2]) else { return nil }
+        return (out, nw, nh)
+    }
+
+    private static func runTool(_ tool: URL, _ args: [String], stdout: URL) -> Bool {
+        FileManager.default.createFile(atPath: stdout.path, contents: nil)
+        guard let h = try? FileHandle(forWritingTo: stdout) else { return false }
+        let proc = Process()
+        proc.executableURL = tool
+        proc.arguments = args
+        proc.standardOutput = h
+        proc.standardError = FileHandle.nullDevice
+        do { try proc.run() } catch { return false }
+        proc.waitUntilExit()
+        try? h.close()
+        return proc.terminationStatus == 0
     }
 
     /// Decode a JPEG payload, downsample so the longest side is `maxDim`,
