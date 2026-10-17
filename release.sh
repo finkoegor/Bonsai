@@ -16,7 +16,7 @@ CONFIG="$HOME/.config/bonsai"
 KEY="$CONFIG/sparkle_private_key"
 TOOLS="$CONFIG/sparkle-tools"
 
-[ -f "$CONFIG/release.env" ] && source "$CONFIG/release.env"
+if [ -f "$CONFIG/release.env" ]; then set -a; source "$CONFIG/release.env"; set +a; fi
 [ -f "$KEY" ] || { echo "no Sparkle signing key at $KEY"; exit 1; }
 
 IDENTITY="$(./scripts/signing-identity.sh)"
