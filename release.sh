@@ -1,18 +1,27 @@
 #!/bin/bash
-# Publishes a Bonsai release: build, zip, EdDSA-sign, appcast entry, git tag,
-# GitHub release. Sparkle in installed apps picks the update from appcast.xml.
+# Publishes a Bonsai release: Developer ID build, Apple notarization, zip,
+# EdDSA signature, appcast entry, git tag, GitHub release. Sparkle in installed
+# apps picks the update from appcast.xml.
 #
 #   ./release.sh 1.0.1 "What changed in this version"
+#
+# Local settings (e.g. NOTARY_PROFILE) may live in ~/.config/bonsai/release.env.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 VER="${1:?usage: release.sh <version> [notes]}"
 NOTES="${2:-Improvements and fixes.}"
 REPO="finkoegor/Bonsai"
-KEY="$HOME/.config/bonsai/sparkle_private_key"
-TOOLS="$HOME/.config/bonsai/sparkle-tools"
+CONFIG="$HOME/.config/bonsai"
+KEY="$CONFIG/sparkle_private_key"
+TOOLS="$CONFIG/sparkle-tools"
 
+[ -f "$CONFIG/release.env" ] && source "$CONFIG/release.env"
 [ -f "$KEY" ] || { echo "no Sparkle signing key at $KEY"; exit 1; }
+
+IDENTITY="$(./scripts/signing-identity.sh)"
+[[ "$IDENTITY" == "Developer ID Application:"* ]] || {
+    echo "releases need a Developer ID Application certificate, found: $IDENTITY"; exit 1; }
 
 # Bootstrap Sparkle CLI tools once.
 if [ ! -x "$TOOLS/bin/sign_update" ]; then
@@ -24,7 +33,11 @@ if [ ! -x "$TOOLS/bin/sign_update" ]; then
 fi
 
 echo "$VER" > VERSION
-./build.sh
+RELEASE=1 ./build.sh
+
+echo "▸ notarizing"
+./scripts/notarize.sh Build/Bonsai.app
+spctl --assess --type execute --verbose Build/Bonsai.app
 
 ZIP="Build/Bonsai-$VER.zip"
 rm -f "$ZIP"

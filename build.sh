@@ -65,8 +65,29 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --deep --sign - "$APP" 2>/dev/null
-echo "▸ built: $APP (v$VER)"
+# Signed with the team's Developer ID when its certificate is in the keychain,
+# ad hoc otherwise (builds from source on other machines). Sparkle's helpers are
+# signed inside out, as its documentation describes, so the hardened runtime
+# accepts the framework as coming from the same team as the app.
+IDENTITY="$(./scripts/signing-identity.sh 2>/dev/null || true)"
+if [ -n "$IDENTITY" ]; then
+    # Notarization requires a secure timestamp; local builds skip it so they work offline.
+    if [ "${RELEASE:-0}" = 1 ]; then TIMESTAMP="--timestamp"; else TIMESTAMP="--timestamp=none"; fi
+    sign() {
+        codesign --force --options runtime "$TIMESTAMP" --sign "$IDENTITY" "$@"
+    }
+    SPARKLE="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
+    sign "$SPARKLE/XPCServices/Installer.xpc"
+    sign --preserve-metadata=entitlements "$SPARKLE/XPCServices/Downloader.xpc"
+    sign "$SPARKLE/Autoupdate"
+    sign "$SPARKLE/Updater.app"
+    sign "$APP/Contents/Frameworks/Sparkle.framework"
+    sign "$APP"
+else
+    codesign --force --deep --sign - "$APP"
+fi
+codesign --verify --strict "$APP"
+echo "▸ built: $APP (v$VER), signed: ${IDENTITY:-ad hoc}"
 
 # Install into /Applications on demand, and auto-refresh an existing install
 # on every subsequent build.
