@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import PDFKit
 import Quartz
 import ImageIO
@@ -443,15 +444,28 @@ enum Compressor {
     // the result. Everything else - vectors, text, transparency, structure -
     // stays byte-identical, so it renders exactly like the original everywhere.
 
-    /// Max image dimension and JPEG quality (libjpeg 0-100 scale) for the
-    /// surgical path. Low/Recommended never resize: pixel dimensions stay as
-    /// exported (like the web compressors do) and the win comes purely from
-    /// re-encoding with mozjpeg. Only Extreme trades resolution for size.
-    private static func surgicalParams(_ preset: Preset) -> (maxDim: Int, quality: Int) {
+    /// Knobs of the surgical path (JPEG qualities on the libjpeg 0-100 scale).
+    /// Low/Recommended never resize: pixel dimensions stay as exported (like
+    /// the web compressors do) and the win comes purely from re-encoding with
+    /// mozjpeg. Only Extreme trades resolution for size.
+    ///
+    /// Soft masks are the other half of a design export: smooth alpha ramps
+    /// stored as Flate, often bigger than the photos they belong to, and JPEG
+    /// encodes them almost losslessly. `maskTolerance` is the largest alpha
+    /// deviation (out of 255) a re-encoded mask may show at any pixel; hard
+    /// edged cutouts ring far beyond it and keep their original bytes.
+    private struct SurgicalParams {
+        var maxDim: Int
+        var quality: Int
+        var maskQuality: Int
+        var maskTolerance: Int
+    }
+
+    private static func surgicalParams(_ preset: Preset) -> SurgicalParams {
         switch preset {
-        case .low: (8192, 82)
-        case .recommended: (8192, 70)
-        case .extreme: (2800, 55)
+        case .low: SurgicalParams(maxDim: 8192, quality: 82, maskQuality: 95, maskTolerance: 4)
+        case .recommended: SurgicalParams(maxDim: 8192, quality: 70, maskQuality: 85, maskTolerance: 8)
+        case .extreme: SurgicalParams(maxDim: 2800, quality: 55, maskQuality: 75, maskTolerance: 8)
         }
     }
 
@@ -484,15 +498,29 @@ enum Compressor {
         guard runQpdf(qpdf, ["--qdf", "--object-streams=disable", url.path, qdf.path]),
               let data = try? Data(contentsOf: qdf) else { return nil }
 
-        let p = surgicalParams(preset)
-        guard let editedData = rewriteOversizedImages(data, maxDim: p.maxDim, quality: p.quality) else {
+        // Duplicates first, so the image pass never spends time on copies
+        // that qpdf drops anyway. Dedupe only touches references, which keeps
+        // the QDF /Length objects truthful for the image pass that follows.
+        var working = data
+        var touched = false
+        var orphans = Set<Int>()
+        if let deduped = dedupeImages(working) {
+            working = deduped.data
+            orphans = deduped.orphans
+            touched = true
+        }
+        if let rewritten = rewriteImages(working, params: surgicalParams(preset), skipping: orphans) {
+            working = rewritten
+            touched = true
+        }
+        guard touched else {
             // Nothing worth re-encoding (images already tight). The container
             // pass alone still helps: qpdf drops unreferenced export junk and
             // packs object streams; page content stays byte-identical.
             return runQpdf(qpdf, ["--object-streams=generate", "--compress-streams=y",
                                   url.path, out.path]) ? out : nil
         }
-        guard (try? editedData.write(to: edited)) != nil else { return nil }
+        guard (try? working.write(to: edited)) != nil else { return nil }
 
         // fix-qdf reads the edited file and regenerates xref offsets and the
         // indirect /Length objects our replacements invalidated.
@@ -513,65 +541,211 @@ enum Compressor {
         return out
     }
 
-    /// Scans a QDF byte buffer for `/Subtype /Image` objects with a pure
-    /// DCTDecode filter and replaces oversized payloads with downsampled JPEGs.
-    /// Returns nil when nothing was replaced.
-    private static func rewriteOversizedImages(_ data: Data, maxDim: Int, quality: Int) -> Data? {
+    /// One `N 0 obj` of a QDF buffer: where its dictionary text sits and, for
+    /// streams, the exact payload bytes (`/Length` long).
+    private struct QdfObject {
+        var number: Int
+        var dictRange: Range<Int>
+        var payloadRange: Range<Int>?
+    }
+
+    /// Walks the objects of a QDF buffer in file order. Stream payloads are
+    /// skipped wholesale, so binary data is never mistaken for syntax.
+    private static func qdfObjects(_ bytes: [UInt8]) -> [QdfObject] {
+        var objects: [QdfObject] = []
+        let objMark = [UInt8](" 0 obj".utf8)
+        let streamKw = [UInt8]("stream".utf8)
+        let endobjKw = [UInt8]("endobj".utf8)
+        var cursor = 0
+        while let objAt = find(objMark, in: bytes, from: cursor) {
+            cursor = objAt + objMark.count
+            var digits = objAt
+            while digits > 0, (0x30...0x39).contains(bytes[digits - 1]) { digits -= 1 }
+            guard digits < objAt, digits == 0 || bytes[digits - 1] == 0x0A,
+                  let number = Int(String(decoding: bytes[digits..<objAt], as: UTF8.self)),
+                  let endobjAt = find(endobjKw, in: bytes, from: cursor) else { continue }
+            guard let streamAt = find(streamKw, in: bytes, from: cursor, before: endobjAt) else {
+                objects.append(QdfObject(number: number, dictRange: cursor..<endobjAt, payloadRange: nil))
+                cursor = endobjAt + endobjKw.count
+                continue
+            }
+            var payloadStart = streamAt + streamKw.count
+            if payloadStart < bytes.count, bytes[payloadStart] == 0x0D { payloadStart += 1 }
+            if payloadStart < bytes.count, bytes[payloadStart] == 0x0A { payloadStart += 1 }
+            let dictRange = cursor..<streamAt
+            guard let dict = String(bytes: bytes[dictRange], encoding: .isoLatin1),
+                  let lengthRef = intValue(after: "/Length ", in: dict),
+                  let length = resolveIndirectLength(dict: dict, ref: lengthRef, in: bytes, near: payloadStart),
+                  payloadStart + length <= bytes.count else {
+                cursor = endobjAt + endobjKw.count
+                continue
+            }
+            objects.append(QdfObject(number: number, dictRange: dictRange,
+                                     payloadRange: payloadStart..<(payloadStart + length)))
+            cursor = payloadStart + length
+        }
+        return objects
+    }
+
+    private static func find(_ needle: [UInt8], in hay: [UInt8], from: Int, before end: Int) -> Int? {
+        let limit = min(end, hay.count) - needle.count
+        guard !needle.isEmpty, from <= limit else { return nil }
+        var i = from
+        while i <= limit {
+            if hay[i] == needle[0] {
+                var j = 1
+                while j < needle.count, hay[i + j] == needle[j] { j += 1 }
+                if j == needle.count { return i }
+            }
+            i += 1
+        }
+        return nil
+    }
+
+    private static let softMaskRef = try! NSRegularExpression(pattern: "/SMask ([0-9]+) 0 R")
+    private static let anyRef = try! NSRegularExpression(pattern: "(?<![0-9])([0-9]+) 0 R")
+
+    /// Object numbers used as somebody's /SMask.
+    private static func softMaskNumbers(_ objects: [QdfObject], in bytes: [UInt8]) -> Set<Int> {
+        var numbers = Set<Int>()
+        for obj in objects {
+            guard let dict = String(bytes: bytes[obj.dictRange], encoding: .isoLatin1),
+                  dict.contains("/SMask ") else { continue }
+            let ns = dict as NSString
+            for m in softMaskRef.matches(in: dict, range: NSRange(location: 0, length: ns.length)) {
+                if let n = Int(ns.substring(with: m.range(at: 1))) { numbers.insert(n) }
+            }
+        }
+        return numbers
+    }
+
+    /// Design tools export the same bitmap once per page it appears on, as
+    /// separate objects. Identical image streams (same dictionary, same bytes)
+    /// collapse onto their first copy by rewriting references; qpdf drops the
+    /// now unreferenced copies when it packs the file. Masks collapse in the
+    /// first round, the images that pointed at them in the next.
+    /// Returns nil when there were no duplicates.
+    private static func dedupeImages(_ data: Data) -> (data: Data, orphans: Set<Int>)? {
+        var working = data
+        var orphans = Set<Int>()
+        for _ in 0..<3 {
+            let bytes = [UInt8](working)
+            let objects = qdfObjects(bytes)
+            var canonical: [String: Int] = [:]
+            var alias: [Int: Int] = [:]
+            for obj in objects {
+                guard let payloadRange = obj.payloadRange, !orphans.contains(obj.number),
+                      let dict = String(bytes: bytes[obj.dictRange], encoding: .isoLatin1),
+                      dict.contains("/Subtype /Image") else { continue }
+                let key = imageIdentity(dict: dict, payload: bytes[payloadRange])
+                if let first = canonical[key] {
+                    alias[obj.number] = first
+                } else {
+                    canonical[key] = obj.number
+                }
+            }
+            guard !alias.isEmpty else { break }
+            working = rewriteReferences(working, objects: objects, alias: alias)
+            orphans.formUnion(alias.keys)
+        }
+        return orphans.isEmpty ? nil : (working, orphans)
+    }
+
+    /// Dictionary without its (per-object) /Length entry plus a digest of the bytes.
+    private static func imageIdentity(dict: String, payload: ArraySlice<UInt8>) -> String {
+        let shape = dict.split(separator: "\n").filter { !$0.hasPrefix("  /Length ") }.joined(separator: "\n")
+        let digest = SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined()
+        return shape + digest
+    }
+
+    private static func rewriteReferences(_ data: Data, objects: [QdfObject], alias: [Int: Int]) -> Data {
+        var result = Data(capacity: data.count)
+        var pos = 0
+        for obj in objects {
+            guard let dict = String(data: data.subdata(in: obj.dictRange), encoding: .isoLatin1),
+                  dict.contains(" 0 R") else { continue }
+            let ns = dict as NSString
+            var patched = ""
+            var last = 0
+            for m in anyRef.matches(in: dict, range: NSRange(location: 0, length: ns.length)) {
+                guard let n = Int(ns.substring(with: m.range(at: 1))), let to = alias[n] else { continue }
+                patched += ns.substring(with: NSRange(location: last, length: m.range.location - last))
+                patched += "\(to) 0 R"
+                last = m.range.location + m.range.length
+            }
+            guard last > 0 else { continue }
+            patched += ns.substring(from: last)
+            result.append(data.subdata(in: pos..<obj.dictRange.lowerBound))
+            result.append(patched.data(using: .isoLatin1)!)
+            pos = obj.dictRange.upperBound
+        }
+        result.append(data.subdata(in: pos..<data.count))
+        return result
+    }
+
+    /// Re-encodes image streams of a QDF buffer in place: JPEG payloads at the
+    /// preset's quality (resized only above the cap), soft masks as JPEG when
+    /// the round trip stays within the preset's alpha tolerance. Everything
+    /// else in the file is copied byte for byte. Returns nil when nothing
+    /// changed.
+    private static func rewriteImages(_ data: Data, params p: SurgicalParams, skipping orphans: Set<Int>) -> Data? {
         let bytes = [UInt8](data)
+        let objects = qdfObjects(bytes)
+        let maskNumbers = softMaskNumbers(objects, in: bytes)
         var result = Data(capacity: data.count)
         var pos = 0
         var replaced = 0
 
-        var searchFrom = 0
-        let objMark = [UInt8](" 0 obj".utf8)
-        while let objAt = find(objMark, in: bytes, from: searchFrom) {
-            searchFrom = objAt + objMark.count
-            guard objAt >= pos else { continue }   // never re-enter consumed bytes
-            // dict spans from after " 0 obj" to "stream" keyword (if any)
-            guard let streamKw = find([UInt8]("stream".utf8), in: bytes, from: objAt),
-                  streamKw - objAt < 4096 else { continue }
-            let dictBytes = Array(bytes[(objAt + objMark.count)..<streamKw])
-            guard let dict = String(bytes: dictBytes, encoding: .isoLatin1),
+        for obj in objects {
+            guard let payloadRange = obj.payloadRange, !orphans.contains(obj.number),
+                  payloadRange.count >= 50_000,   // not worth a re-encode round trip
+                  let dict = String(bytes: bytes[obj.dictRange], encoding: .isoLatin1),
                   dict.contains("/Subtype /Image"),
-                  // pure JPEG payload: DCT alone, either as a name or a
-                  // one-element array; skip flate-wrapped or exotic chains
-                  dict.contains("/DCTDecode"),
-                  !dict.contains("/FlateDecode"),
-                  !dict.contains("/ImageMask true") else { continue }
-            guard let w = intValue(after: "/Width ", in: dict),
-                  let h = intValue(after: "/Height ", in: dict),
-                  let lengthRef = intValue(after: "/Length ", in: dict),
-                  let length = resolveIndirectLength(dict: dict, ref: lengthRef, in: bytes)
-            else { continue }
-
-            var payloadStart = streamKw + 6
-            if payloadStart < bytes.count, bytes[payloadStart] == 0x0D { payloadStart += 1 }
-            if payloadStart < bytes.count, bytes[payloadStart] == 0x0A { payloadStart += 1 }
-            guard payloadStart + length <= bytes.count else { continue }
-            let payload = data.subdata(in: payloadStart..<(payloadStart + length))
-
-            // Never upscale; resize only above the cap. Keep the replacement
-            // only when it wins meaningfully, so already-tight JPEGs survive.
-            // Soft masks are smooth alpha ramps and take lower quality well.
-            if length < 50_000 { continue }   // not worth a re-encode round trip
-            let target = min(maxDim, max(w, h))
-            let isGray = dict.contains("/DeviceGray")
-            let q = isGray ? max(35, quality - 10) : quality
-            guard let (smaller, nw, nh) = reencodeJPEG(payload, srcMax: max(w, h),
-                                                       maxDim: target, quality: q),
-                  smaller.count < Int(Double(length) * 0.92) else { continue }
-
+                  !dict.contains("/ImageMask true"),
+                  let w = intValue(after: "/Width ", in: dict),
+                  let h = intValue(after: "/Height ", in: dict) else { continue }
+            let length = payloadRange.count
+            let payload = data.subdata(in: payloadRange)
+            let isMask = maskNumbers.contains(obj.number)
             var newDict = dict
-            newDict = newDict.replacingOccurrences(of: "/Width \(w)", with: "/Width \(nw)")
-            newDict = newDict.replacingOccurrences(of: "/Height \(h)", with: "/Height \(nh)")
+            let smaller: Data
+
+            if dict.contains("/DCTDecode"), !dict.contains("/FlateDecode") {
+                // Pure JPEG payload (DCT alone, as a name or a one-element
+                // array). Never upscale; resize only above the cap. Keep the
+                // replacement only when it wins meaningfully, so already
+                // tight JPEGs survive.
+                let target = min(p.maxDim, max(w, h))
+                guard let r = reencodeJPEG(payload, srcMax: max(w, h), maxDim: target,
+                                           quality: isMask ? p.maskQuality : p.quality,
+                                           tolerance: isMask ? p.maskTolerance : nil),
+                      r.jpeg.count < Int(Double(length) * 0.92) else { continue }
+                newDict = newDict.replacingOccurrences(of: "/Width \(w)", with: "/Width \(r.width)")
+                newDict = newDict.replacingOccurrences(of: "/Height \(h)", with: "/Height \(r.height)")
+                smaller = r.jpeg
+            } else if isMask, !dict.contains("/Filter"), !dict.contains("/DecodeParms"),
+                      dict.contains("/DeviceGray"), dict.contains("/BitsPerComponent 8"),
+                      length == w * h {
+                // A Flate mask, inflated by qpdf to raw pixels. Its real cost
+                // is the deflated size, so that is what the JPEG must beat.
+                guard let moz = mozjpegBin,
+                      let deflated = try? (payload as NSData).compressed(using: .zlib),
+                      let jpeg = encodeGray(moz, pixels: payload, width: w, height: h,
+                                            quality: p.maskQuality, tolerance: p.maskTolerance),
+                      jpeg.count < Int(Double(deflated.count) * 0.92),
+                      let close = newDict.range(of: ">>", options: .backwards) else { continue }
+                newDict.insert(contentsOf: "  /Filter /DCTDecode\n", at: close.lowerBound)
+                smaller = jpeg
+            } else {
+                continue
+            }
 
             // copy everything up to the object dict, then the patched object
-            result.append(data.subdata(in: pos..<(objAt + objMark.count)))
+            result.append(data.subdata(in: pos..<obj.dictRange.lowerBound))
             result.append(newDict.data(using: .isoLatin1)!)
             result.append(Data("stream\n".utf8))
             result.append(smaller)
-            pos = payloadStart + length
-            searchFrom = pos
+            pos = payloadRange.upperBound
             replaced += 1
         }
         guard replaced > 0 else { return nil }
@@ -587,12 +761,13 @@ enum Compressor {
     }
 
     /// QDF stores stream lengths as indirect objects: `/Length N 0 R` with
-    /// `N 0 obj <int> endobj` nearby. Returns the int, or the ref itself when
-    /// the length happened to be direct.
-    private static func resolveIndirectLength(dict: String, ref: Int, in bytes: [UInt8]) -> Int? {
+    /// `N 0 obj <int> endobj` right after the stream, which is where `near`
+    /// points. Returns the int, or the ref itself when the length happened to
+    /// be direct.
+    private static func resolveIndirectLength(dict: String, ref: Int, in bytes: [UInt8], near: Int) -> Int? {
         guard dict.contains("/Length \(ref) 0 R") else { return ref }   // direct length
         let marker = [UInt8]("\n\(ref) 0 obj".utf8)
-        guard let at = find(marker, in: bytes, from: 0) else { return nil }
+        guard let at = find(marker, in: bytes, from: near) ?? find(marker, in: bytes, from: 0) else { return nil }
         var i = at + marker.count
         while i < bytes.count, bytes[i] == 0x0A || bytes[i] == 0x0D || bytes[i] == 0x20 { i += 1 }
         var value = 0
@@ -605,20 +780,31 @@ enum Compressor {
         return any ? value : nil
     }
 
+    private struct Reencoded {
+        var jpeg: Data
+        var width: Int
+        var height: Int
+    }
+
     /// Re-encode a JPEG payload with mozjpeg when available (far better
-    /// rate/quality than ImageIO), falling back to the ImageIO path.
-    private static func reencodeJPEG(_ payload: Data, srcMax: Int,
-                                     maxDim: Int, quality: Int) -> (Data, Int, Int)? {
-        if let moz = mozjpegBin,
-           let r = mozjpegReencode(moz, payload, srcMax: srcMax, maxDim: maxDim, quality: quality) {
-            return r
+    /// rate/quality than ImageIO), falling back to the ImageIO path. With a
+    /// `tolerance` the result must stay within that many levels of its source
+    /// at every pixel (soft masks); that check needs mozjpeg's decoder.
+    private static func reencodeJPEG(_ payload: Data, srcMax: Int, maxDim: Int,
+                                     quality: Int, tolerance: Int?) -> Reencoded? {
+        if let moz = mozjpegBin {
+            return mozjpegReencode(moz, payload, srcMax: srcMax, maxDim: maxDim,
+                                   quality: quality, tolerance: tolerance)
         }
-        return downsampledJPEG(payload, maxDim: maxDim, quality: CGFloat(quality) / 100.0)
+        guard tolerance == nil,
+              let (data, w, h) = downsampledJPEG(payload, maxDim: maxDim, quality: CGFloat(quality) / 100.0)
+        else { return nil }
+        return Reencoded(jpeg: data, width: w, height: h)
     }
 
     /// djpeg [-scale n/8] -pnm | cjpeg -quality q -optimize
-    private static func mozjpegReencode(_ bin: URL, _ payload: Data, srcMax: Int,
-                                        maxDim: Int, quality: Int) -> (Data, Int, Int)? {
+    private static func mozjpegReencode(_ bin: URL, _ payload: Data, srcMax: Int, maxDim: Int,
+                                        quality: Int, tolerance: Int?) -> Reencoded? {
         let fm = FileManager.default
         let tmp = tempRoot.appendingPathComponent("moz-\(UUID().uuidString)")
         try? fm.createDirectory(at: tmp, withIntermediateDirectories: true)
@@ -644,7 +830,70 @@ enum Compressor {
         let parts = String(decoding: header, as: UTF8.self)
             .split(whereSeparator: { $0.isWhitespace }).prefix(3)
         guard parts.count == 3, let nw = Int(parts[1]), let nh = Int(parts[2]) else { return nil }
-        return (out, nw, nh)
+        if let tolerance {
+            guard let source = try? Data(contentsOf: pnm),
+                  roundTrip(of: outJpg, stays: tolerance, from: source, bin: bin, dir: tmp) else { return nil }
+        }
+        return Reencoded(jpeg: out, width: nw, height: nh)
+    }
+
+    /// cjpeg over raw 8-bit gray pixels; nil unless the round trip stays
+    /// within `tolerance` at every pixel.
+    private static func encodeGray(_ bin: URL, pixels: Data, width: Int, height: Int,
+                                   quality: Int, tolerance: Int) -> Data? {
+        let fm = FileManager.default
+        let tmp = tempRoot.appendingPathComponent("moz-\(UUID().uuidString)")
+        try? fm.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: tmp) }
+        let pnm = tmp.appendingPathComponent("raw.pnm")
+        let outJpg = tmp.appendingPathComponent("out.jpg")
+        var source = Data("P5\n\(width) \(height)\n255\n".utf8)
+        source.append(pixels)
+        guard (try? source.write(to: pnm)) != nil,
+              runTool(bin.appendingPathComponent("cjpeg"),
+                      ["-quality", "\(quality)", "-optimize", "-grayscale", pnm.path], stdout: outJpg),
+              let out = try? Data(contentsOf: outJpg), !out.isEmpty,
+              roundTrip(of: outJpg, stays: tolerance, from: source, bin: bin, dir: tmp) else { return nil }
+        return out
+    }
+
+    /// Decodes `jpeg` again and compares it pixel by pixel with the PNM it
+    /// was encoded from.
+    private static func roundTrip(of jpeg: URL, stays tolerance: Int, from source: Data,
+                                  bin: URL, dir: URL) -> Bool {
+        let back = dir.appendingPathComponent("back.pnm")
+        guard runTool(bin.appendingPathComponent("djpeg"), ["-pnm", jpeg.path], stdout: back),
+              let decoded = try? Data(contentsOf: back),
+              let a = pnmPixelOffset(source), let b = pnmPixelOffset(decoded),
+              source.count - a == decoded.count - b else { return false }
+        let n = source.count - a
+        return source.withUnsafeBytes { ps in
+            decoded.withUnsafeBytes { pd in
+                let x = ps.bindMemory(to: UInt8.self)
+                let y = pd.bindMemory(to: UInt8.self)
+                var i = 0
+                while i < n {
+                    if abs(Int(x[a + i]) - Int(y[b + i])) > tolerance { return false }
+                    i += 1
+                }
+                return true
+            }
+        }
+    }
+
+    /// Offset of the pixel bytes in a binary PNM: magic, width, height,
+    /// maxval, then exactly one whitespace byte.
+    private static func pnmPixelOffset(_ data: Data) -> Int? {
+        let head = [UInt8](data.prefix(64))
+        func space(_ b: UInt8) -> Bool { b == 0x20 || b == 0x0A || b == 0x0D || b == 0x09 }
+        var i = 0
+        for _ in 0..<4 {
+            while i < head.count, space(head[i]) { i += 1 }
+            guard i < head.count else { return nil }
+            while i < head.count, !space(head[i]) { i += 1 }
+        }
+        guard i < head.count, space(head[i]) else { return nil }
+        return i + 1
     }
 
     private static func runTool(_ tool: URL, _ args: [String], stdout: URL) -> Bool {
