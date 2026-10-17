@@ -4,6 +4,15 @@
     <title>Bonsai</title>
     <language>en</language>
     <item>
+      <title>1.1.0</title>
+      <pubDate>Sat, 17 Oct 2026 22:29:20 +0800</pubDate>
+      <sparkle:version>1.1.0</sparkle:version>
+      <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[Design exports compress much deeper. Soft masks behind glows, blurs and inner shadows are now re-encoded as JPEG when the round trip stays visually exact at every pixel, and bitmaps exported once per page collapse into a single object. Recommended on a 19 MB Figma deck: 9.8 MB instead of 12.8 MB, Extreme: 5 MB. Text, vectors and transparency are still byte-identical.]]></description>
+      <enclosure url="https://github.com/finkoegor/Bonsai/releases/download/v1.1.0/Bonsai-1.1.0.zip" sparkle:edSignature="uOAQdtPVme8J7W4Ylw5WO0f/b5hr6yd20new5X6V6A8bDIA34y1vjnLFzsdKwCP+2oPwxKu4rBmGm/IcgBObDw==" length="2012411" type="application/octet-stream"/>
+    </item>
+    <item>
       <title>1.0.9</title>
       <pubDate>Sat, 17 Oct 2026 20:46:01 +0800</pubDate>
       <sparkle:version>1.0.9</sparkle:version>
