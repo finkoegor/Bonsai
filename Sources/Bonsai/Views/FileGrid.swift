@@ -77,6 +77,7 @@ struct FileGrid: View {
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
+        .disabled(state.isCompressing)
         .modifier(HoverScale(scale: 1.02))
     }
 }
@@ -109,10 +110,10 @@ struct FileCard: View {
         .scaleEffect(hovering ? 1.015 : 1)
         .animation(.spring(response: 0.3, dampingFraction: 0.75), value: hovering)
         .onHover { hovering = $0 }
-        .onTapGesture { openPreviewIfReady() }
+        .onTapGesture { openPreviewIfDone() }
         .contextMenu {
-            Button("Preview Before / After") { openPreviewIfReady() }
-                .disabled(item.estimate(for: state.preset) == nil)
+            Button("Preview Before / After") { openPreviewIfDone() }
+                .disabled(item.result == nil)
             Button("Show in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([item.savedURL ?? item.url])
             }
@@ -122,9 +123,9 @@ struct FileCard: View {
         }
     }
 
-    private func openPreviewIfReady() {
-        if case .failed = item.status { return }
-        if item.estimate(for: state.preset) != nil { openPreview(item) }
+    /// The comparison needs an "after": it opens once the file has been compressed.
+    private func openPreviewIfDone() {
+        if item.result != nil { openPreview(item) }
     }
 
     // MARK: thumbnail
@@ -146,7 +147,6 @@ struct FileCard: View {
                     .foregroundStyle(theme.text3)
             }
 
-            // status overlay
             statusOverlay
         }
         .frame(height: 132)
@@ -155,26 +155,33 @@ struct FileCard: View {
 
     /// The item is saved with the preset the user is looking at right now.
     private var doneForCurrentPreset: Bool {
-        item.status == .done && item.deliveredPreset == state.preset
+        item.status == .done && item.resultPreset == state.preset
     }
 
     @ViewBuilder
     private var statusOverlay: some View {
         switch item.status {
-        case .validating, .estimating:
-            overlayChip { SpinnerRing(size: 15, line: 2) } label: {
-                Text(item.status == .validating ? "Reading…" : "Estimating…")
-            }
+        case .reading:
+            overlayChip { SpinnerRing(size: 15, line: 2) } label: { Text("Reading…") }
         case .compressing:
             overlayChip { SpinnerRing(size: 15, line: 2) } label: { Text("Compressing…") }
         case .done:
-            overlayChip {
-                Icon(name: "check-circle", size: 13).foregroundStyle(theme.success)
-            } label: {
-                Text(doneForCurrentPreset
-                     ? "Saved"
-                     : "Saved as \(item.deliveredPreset?.rawValue ?? "")")
-                    .foregroundStyle(theme.success)
+            if hovering {
+                overlayChip {
+                    Icon(name: "eye", size: 13)
+                } label: {
+                    Text("Preview")
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            } else {
+                overlayChip {
+                    Icon(name: "check-circle", size: 13).foregroundStyle(theme.success)
+                } label: {
+                    Text(doneForCurrentPreset
+                         ? "Saved"
+                         : "Saved as \(item.resultPreset?.rawValue ?? "")")
+                        .foregroundStyle(theme.success)
+                }
             }
         case .failed(let reason):
             overlayChip {
@@ -183,14 +190,7 @@ struct FileCard: View {
                 Text(reason).foregroundStyle(theme.danger)
             }
         case .ready:
-            if hovering {
-                overlayChip {
-                    Icon(name: "eye", size: 13)
-                } label: {
-                    Text("Preview")
-                }
-                .transition(.opacity.combined(with: .scale(scale: 0.9)))
-            }
+            EmptyView()
         }
     }
 
@@ -224,18 +224,14 @@ struct FileCard: View {
                 .foregroundStyle(theme.text)
                 .lineLimit(1)
                 .truncationMode(.middle)
-            HStack(spacing: 6) {
-                Text(Format.size(item.inputBytes))
-                    .monospacedDigit()
-                if item.pageCount > 0 {
-                    Text("·")
-                    Text("\(item.pageCount) \(item.pageCount == 1 ? "page" : "pages")")
-                }
-            }
-            .font(.system(size: 11))
-            .foregroundStyle(theme.text2)
+            Text(item.pageCount > 0
+                 ? "\(Format.size(item.inputBytes)), \(item.pageCount) \(item.pageCount == 1 ? "page" : "pages")"
+                 : Format.size(item.inputBytes))
+                .font(.system(size: 11))
+                .monospacedDigit()
+                .foregroundStyle(theme.text2)
 
-            savingsBadge
+            resultBadge
                 .padding(.top, 3)
         }
         .padding(.horizontal, 14)
@@ -244,29 +240,21 @@ struct FileCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// What landed on disk. Before the run the slot stays empty at the same
+    /// height, so the card doesn't jump when the badge appears.
     @ViewBuilder
-    private var savingsBadge: some View {
+    private var resultBadge: some View {
         if case .failed = item.status {
             Badge(text: "Skipped", fg: theme.danger, bg: theme.dangerSoft)
-        } else if doneForCurrentPreset, let d = item.deliveredResult {
-            // What actually landed on disk with this preset.
-            Badge(text: d.keptOriginal
+        } else if let r = item.result {
+            Badge(text: r.keptOriginal
                     ? "Already optimized"
-                    : "\(Format.size(d.outputBytes))  −\(Format.percent(d.savedFraction))",
-                  fg: d.keptOriginal ? theme.text2 : theme.success,
-                  bg: d.keptOriginal ? theme.wellBG : theme.successSoft)
-        } else if let est = item.estimate(for: state.preset) {
-            if est.keptOriginal {
-                Badge(text: "Already optimized", fg: theme.text2, bg: theme.wellBG)
-            } else {
-                Badge(text: "\(Format.size(est.outputBytes))  −\(Format.percent(est.savedFraction))",
-                      fg: theme.success, bg: theme.successSoft)
-                    .contentTransition(.numericText())
-                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: est.outputBytes)
-            }
+                    : "\(Format.size(r.outputBytes))  -\(Format.percent(r.savedFraction))",
+                  fg: r.keptOriginal ? theme.text2 : theme.success,
+                  bg: r.keptOriginal ? theme.wellBG : theme.successSoft)
+                .transition(.scale(scale: 0.9).combined(with: .opacity))
         } else {
-            // Same footprint as the badge, so the card doesn't jump.
-            Shimmer(width: 86, height: BadgeToken.height)
+            Color.clear.frame(height: BadgeToken.height)
         }
     }
 

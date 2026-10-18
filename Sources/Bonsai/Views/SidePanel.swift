@@ -131,7 +131,7 @@ struct SidePanel: View {
         }
     }
 
-    // MARK: bottom: summary + save mode + CTA / success
+    // MARK: bottom: save mode + CTA / success
 
     @ViewBuilder
     private var bottomSection: some View {
@@ -140,61 +140,17 @@ struct SidePanel: View {
                 .transition(.scale(scale: 0.92).combined(with: .opacity))
         } else {
             VStack(alignment: .leading, spacing: 14) {
-                if !state.pendingItems.isEmpty {
-                    summary
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                if !state.items.isEmpty {
                     saveModePicker
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+                if state.isCompressing && state.runTotal > 1 {
+                    progressBar
+                        .transition(.opacity)
                 }
                 compressButton
             }
         }
-    }
-
-    private var summary: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 7) {
-                Text(Format.size(state.totalInputBytes))
-                    .font(.system(size: 14, weight: .medium))
-                    .monospacedDigit()
-                    .foregroundStyle(theme.text2)
-                    .strikethrough(state.totalEstimatedBytes != nil, color: theme.text3)
-                Icon(name: "arrow-right", size: 12)
-                    .foregroundStyle(theme.text3)
-                if let est = state.totalEstimatedBytes {
-                    Text(Format.size(est))
-                        .font(.system(size: 17, weight: .bold))
-                        .monospacedDigit()
-                        .foregroundStyle(theme.text)
-                        .contentTransition(.numericText(value: Double(est)))
-                        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: est)
-                } else {
-                    Shimmer(width: 74, height: 18)
-                }
-            }
-            if let est = state.totalEstimatedBytes, state.totalInputBytes > 0 {
-                let saved = max(0, state.totalInputBytes - est)
-                let frac = Double(saved) / Double(state.totalInputBytes)
-                Text(saved > 0
-                     ? "You'll save \(Format.size(saved)) (−\(Format.percent(frac)))"
-                     : "Files are already optimized")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(saved > 0 ? theme.success : theme.text2)
-                    .contentTransition(.numericText())
-                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: saved)
-            } else {
-                Text("Measuring real savings…")
-                    .font(.system(size: 12))
-                    .foregroundStyle(theme.text3)
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(theme.surface2)
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(theme.border, lineWidth: 1))
-        )
     }
 
     private var saveModePicker: some View {
@@ -220,6 +176,7 @@ struct SidePanel: View {
                 }
                 .buttonStyle(.plain)
                 .help(mode.help)
+                .disabled(state.isCompressing)
             }
         }
         .padding(3)
@@ -227,6 +184,19 @@ struct SidePanel: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(theme.wellBG)
         )
+    }
+
+    private var progressBar: some View {
+        let fraction = Double(state.completedCount) / Double(max(1, state.runTotal))
+        return GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(theme.wellBG)
+                Capsule().fill(theme.accentGradient)
+                    .frame(width: max(6, geo.size.width * fraction))
+            }
+        }
+        .frame(height: 4)
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: fraction)
     }
 
     private var compressButton: some View {
@@ -237,7 +207,10 @@ struct SidePanel: View {
                 if state.isCompressing {
                     SpinnerRing(size: 16, line: 2)
                         .foregroundStyle(.white)
-                    Text("Compressing…")
+                    Text(state.runTotal > 1
+                         ? "Compressing \(min(state.completedCount + 1, state.runTotal)) of \(state.runTotal)…"
+                         : "Compressing…")
+                        .contentTransition(.numericText())
                 } else {
                     let n = state.pendingItems.count
                     Text(n > 1 ? "Compress \(n) PDFs" : "Compress PDF")
@@ -249,6 +222,7 @@ struct SidePanel: View {
         .buttonStyle(PrimaryButtonStyle())
         .disabled(!state.canCompress)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: state.isCompressing)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: state.completedCount)
     }
 }
 
@@ -257,19 +231,20 @@ struct SidePanel: View {
 struct SuccessCard: View {
     @Environment(AppState.self) private var state
     @Environment(\.theme) private var theme
-    let run: (files: Int, savedBytes: Int64)
+    let run: RunSummary
 
     var body: some View {
         VStack(spacing: 12) {
             AnimatedCheck(color: theme.success, size: 46)
             Text(run.savedBytes > 0
-                 ? "Saved \(Format.size(run.savedBytes))"
-                 : "Done")
+                 ? "Saved \(Format.size(run.savedBytes)) (-\(Format.percent(run.savedFraction)))"
+                 : "Already optimized")
                 .font(.system(size: 16, weight: .bold))
                 .monospacedDigit()
                 .foregroundStyle(theme.text)
-            Text("\(run.files) \(run.files == 1 ? "file" : "files") compressed")
+            Text("\(run.files) \(run.files == 1 ? "file" : "files"), \(Format.size(run.inputBytes)) to \(Format.size(run.outputBytes))")
                 .font(.system(size: 12))
+                .monospacedDigit()
                 .foregroundStyle(theme.text2)
 
             HStack(spacing: 8) {
@@ -321,28 +296,10 @@ struct PresetCard: View {
             HStack(spacing: 12) {
                 radio
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(preset.title)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(selected ? theme.accent : theme.text)
-                            .lineLimit(1)
-                            .layoutPriority(1)
-                        // Real total output size for this preset, live.
-                        if !state.items.isEmpty {
-                            if let bytes = state.presetTotalBytes(preset) {
-                                Text("(\(Format.size(bytes)))")
-                                    .font(.system(size: 11.5, weight: .medium))
-                                    .monospacedDigit()
-                                    .lineLimit(1)
-                                    .foregroundStyle(selected ? theme.accent.opacity(0.85) : theme.text2)
-                                    .contentTransition(.numericText())
-                                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: bytes)
-                                    .transition(.opacity)
-                            } else {
-                                Shimmer(width: 52, height: 12)
-                            }
-                        }
-                    }
+                    Text(preset.title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(selected ? theme.accent : theme.text)
+                        .lineLimit(1)
                     Text(preset.subtitle)
                         .font(.system(size: 11))
                         .foregroundStyle(theme.text2)
@@ -366,6 +323,7 @@ struct PresetCard: View {
             .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
+        .disabled(state.isCompressing)
         .scaleEffect(hovering && !selected ? 1.015 : 1)
         .animation(.spring(response: 0.28, dampingFraction: 0.75), value: hovering)
         .animation(.spring(response: 0.32, dampingFraction: 0.75), value: selected)

@@ -8,12 +8,11 @@ import Observation
 @Observable
 final class PDFItem: Identifiable {
     enum Status: Equatable {
-        case validating          // just dropped, reading metadata
-        case estimating          // background compression estimates running
-        case ready               // estimates done, waiting for the big button
-        case failed(String)      // unreadable / locked / broken
-        case compressing         // final save in progress
+        case reading             // just dropped, reading metadata
+        case ready               // waiting for the big button
+        case compressing
         case done                // saved
+        case failed(String)      // unreadable / locked / broken / couldn't save
     }
 
     let id = UUID()
@@ -23,24 +22,21 @@ final class PDFItem: Identifiable {
 
     var pageCount: Int = 0
     var thumbnail: NSImage?
-    var status: Status = .validating
-    /// Real (not guessed) compressed sizes per preset — produced by actually compressing
-    /// into a temp file, so "Save" is instant and the numbers are exact.
-    var estimates: [Preset: CompressionResult] = [:]
+    var status: Status = .reading
     var savedURL: URL?
-    /// What was actually written to disk — the card's badge for .done items,
-    /// stable even when the user flips presets afterwards.
-    var deliveredResult: CompressionResult?
-    /// Which preset produced the delivered file. Lets the user re-compress the
-    /// same item with a different preset to compare versions.
-    var deliveredPreset: Preset?
+    /// What was actually written to disk: the card's badge and the "after"
+    /// side of the preview.
+    var result: CompressionResult?
+    /// Which preset produced it. Picking another preset afterwards makes the
+    /// item pending again, so several versions of one file can be compared.
+    var resultPreset: Preset?
     /// Snapshot of the original bytes in our temp dir (APFS clone, ~free).
-    /// All compression reads from here, so "Replace original" or external
-    /// edits can never corrupt a later re-compression.
+    /// Compression reads from here, so "Replace original" or external edits
+    /// can never corrupt a later run.
     var sourceURL: URL
 
-    @ObservationIgnored var estimateTask: Task<Void, Never>?
-    /// Scratch dir holding this item's estimate temp files.
+    @ObservationIgnored var readTask: Task<Void, Never>?
+    /// Scratch dir holding this item's snapshot and compressed files.
     var tempDir: URL { Compressor.itemWorkDir(id) }
 
     init(url: URL) {
@@ -49,12 +45,6 @@ final class PDFItem: Identifiable {
         self.name = url.deletingPathExtension().lastPathComponent
         self.inputBytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize)
             .flatMap(Int64.init) ?? 0
-    }
-
-    func estimate(for preset: Preset) -> CompressionResult? { estimates[preset] }
-
-    var isBusy: Bool {
-        status == .validating || status == .estimating || status == .compressing
     }
 }
 
@@ -73,6 +63,15 @@ enum SaveMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// Outcome of one press of the big button, drives the success panel.
+struct RunSummary {
+    var files = 0
+    var inputBytes: Int64 = 0
+    var outputBytes: Int64 = 0
+    var savedBytes: Int64 { max(0, inputBytes - outputBytes) }
+    var savedFraction: Double { inputBytes > 0 ? Double(savedBytes) / Double(inputBytes) : 0 }
+}
+
 // MARK: - App state
 
 @Observable @MainActor
@@ -84,7 +83,7 @@ final class AppState {
         didSet {
             UserDefaults.standard.set(preset.rawValue, forKey: "preset")
             // Picking another preset after a run is the "save one more version
-            // and compare" flow: bring back the summary and the big button.
+            // and compare" flow: bring back the big button.
             if lastRun != nil {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { lastRun = nil }
             }
@@ -94,13 +93,15 @@ final class AppState {
         didSet { UserDefaults.standard.set(saveMode.rawValue, forKey: "saveMode") }
     }
     var isCompressing = false
-    /// Set after a successful run — drives the success panel.
-    var lastRun: (files: Int, savedBytes: Int64)?
+    /// Progress of the current run, for the button label and the bar.
+    var completedCount = 0
+    var runTotal = 0
+    var lastRun: RunSummary?
     var isDropTargeted = false
 
-    /// Limits concurrent estimate jobs so a 20-file drop doesn't melt the machine.
-    /// (2, not more: a single 100MB image-heavy file peaks near 600MB RSS in PDFKit.)
-    @ObservationIgnored private let estimateGate = AsyncSemaphore(limit: 2)
+    /// Two files at a time, not more: a single 100 MB image-heavy PDF peaks
+    /// near 600 MB RSS in PDFKit.
+    @ObservationIgnored private let gate = AsyncSemaphore(limit: 2)
 
     private init() {
         if let raw = UserDefaults.standard.string(forKey: "preset"),
@@ -123,13 +124,13 @@ final class AppState {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                 items.append(item)
             }
-            startEstimating(item)
+            startReading(item)
         }
     }
 
     func remove(_ item: PDFItem) {
         guard !isCompressing else { return }   // UI disables this too; stay airtight
-        item.estimateTask?.cancel()
+        item.readTask?.cancel()
         let dir = item.tempDir
         Task.detached(priority: .background) { try? FileManager.default.removeItem(at: dir) }
         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
@@ -140,7 +141,7 @@ final class AppState {
     func clearAll() {
         guard !isCompressing else { return }
         let dirs = items.map(\.tempDir)
-        items.forEach { $0.estimateTask?.cancel() }
+        items.forEach { $0.readTask?.cancel() }
         Task.detached(priority: .background) {
             for dir in dirs { try? FileManager.default.removeItem(at: dir) }
         }
@@ -150,14 +151,12 @@ final class AppState {
         }
     }
 
-    // MARK: Estimating (real compression into temp files, all presets)
+    // MARK: Reading (snapshot, page count, thumbnail)
 
-    private func startEstimating(_ item: PDFItem) {
+    private func startReading(_ item: PDFItem) {
         let url = item.url
         let snapshotURL = item.tempDir.appendingPathComponent("source.pdf")
-        item.estimateTask = Task { [weak item] in
-            // Snapshot + metadata + thumbnail first — cheap (APFS clone),
-            // makes the card feel instant.
+        item.readTask = Task { [weak item] in
             let meta: (pages: Int, thumb: NSImage?, snapshotted: Bool, error: String?) = await Task.detached(priority: .userInitiated) {
                 do {
                     let doc = try Compressor.validate(url)
@@ -180,90 +179,34 @@ final class AppState {
             item.pageCount = meta.pages
             if meta.snapshotted { item.sourceURL = snapshotURL }
             withAnimation(.easeOut(duration: 0.25)) { item.thumbnail = meta.thumb }
-            if let error = meta.error {
-                withAnimation { item.status = .failed(error) }
-                return
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                item.status = meta.error.map { .failed($0) } ?? .ready
             }
-            withAnimation { item.status = .estimating }
-
-            // Selected preset first so the totals become real ASAP, then the others.
-            var order = Preset.allCases
-            if let i = order.firstIndex(of: preset) { order.swapAt(0, i) }
-
-            for p in order {
-                if Task.isCancelled { return }
-                await estimateGate.wait()
-                let dir = item.tempDir
-                let source = item.sourceURL
-                let result = await Task.detached(priority: .utility) {
-                    try? Compressor.compress(source, preset: p, workDir: dir)
-                }.value
-                await estimateGate.signal()
-                if Task.isCancelled { return }
-                if let result {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                        item.estimates[p] = result
-                    }
-                } else if item.status == .estimating {
-                    // Only mark failed while still in the estimate phase — never
-                    // clobber .compressing/.done set by the save flow.
-                    withAnimation { item.status = .failed(CompressionError.writeFailed.errorDescription!) }
-                    return
-                }
-            }
-            if Task.isCancelled || item.status != .estimating { return }
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { item.status = .ready }
         }
     }
 
-    // MARK: Totals for the side panel
+    // MARK: What the big button will do
 
-    /// Everything the list holds — drives the "N files · X MB" header.
+    /// Everything the list holds, drives the "N files, X MB" header.
     var listBytes: Int64 { items.reduce(0) { $0 + $1.inputBytes } }
 
-    /// Items the big button will actually process: not failed, and not already
-    /// saved *with the currently selected preset*. An item delivered as
-    /// Recommended becomes pending again when the user switches to Low —
-    /// that's how "save another version and compare" works.
+    /// Items the big button will process: readable, and not already saved
+    /// *with the currently selected preset*. An item delivered as Recommended
+    /// becomes pending again when the user switches to Low, that's how "save
+    /// another version and compare" works.
     var pendingItems: [PDFItem] {
         items.filter {
-            if case .failed = $0.status { return false }
-            if $0.status == .done { return $0.deliveredPreset != preset }
-            return true
+            switch $0.status {
+            case .failed, .reading: false
+            case .done: $0.resultPreset != preset
+            case .ready, .compressing: true
+            }
         }
     }
 
-    /// Total output size across all live files for a given preset — the number
-    /// shown in brackets on the preset cards. nil while estimates are cooking.
-    func presetTotalBytes(_ p: Preset) -> Int64? {
-        let live = items.filter { if case .failed = $0.status { false } else { true } }
-        guard !live.isEmpty else { return nil }
-        var total: Int64 = 0
-        for item in live {
-            guard let e = item.estimate(for: p) else { return nil }
-            total += e.outputBytes
-        }
-        return total
-    }
+    var isReading: Bool { items.contains { $0.status == .reading } }
 
-    var totalInputBytes: Int64 { pendingItems.reduce(0) { $0 + $1.inputBytes } }
-
-    /// nil while any estimate for the selected preset is still cooking.
-    var totalEstimatedBytes: Int64? {
-        guard !pendingItems.isEmpty else { return nil }
-        var total: Int64 = 0
-        for item in pendingItems {
-            guard let e = item.estimate(for: preset) else { return nil }
-            total += e.outputBytes
-        }
-        return total
-    }
-
-    var canCompress: Bool {
-        // Any pending item is enough — files whose estimate isn't cached yet
-        // are compressed on the spot, nobody gets silently skipped.
-        !isCompressing && !pendingItems.isEmpty
-    }
+    var canCompress: Bool { !isCompressing && !isReading && !pendingItems.isEmpty }
 
     // MARK: The big button
 
@@ -274,78 +217,88 @@ final class AppState {
         // The panel opens in the first file's folder, so "same place" is one Enter away.
         var chosenDir: URL?
         if saveMode == .copy {
-            let panel = NSOpenPanel()
-            panel.canChooseDirectories = true
-            panel.canChooseFiles = false
-            panel.canCreateDirectories = true
-            panel.prompt = "Save Here"
-            panel.message = "Choose where to save the compressed PDFs"
-            panel.directoryURL = pendingItems.first?.url.deletingLastPathComponent()
-            guard panel.runModal() == .OK, let dir = panel.url else { return }
-            chosenDir = dir
+            if let scripted = ProcessInfo.processInfo.environment["BONSAI_OUTDIR"] {
+                chosenDir = URL(fileURLWithPath: scripted, isDirectory: true)
+            } else {
+                let panel = NSOpenPanel()
+                panel.canChooseDirectories = true
+                panel.canChooseFiles = false
+                panel.canCreateDirectories = true
+                panel.prompt = "Save Here"
+                panel.message = "Choose where to save the compressed PDFs"
+                panel.directoryURL = pendingItems.first?.url.deletingLastPathComponent()
+                guard panel.runModal() == .OK, let dir = panel.url else { return }
+                chosenDir = dir
+            }
         }
 
-        isCompressing = true
-        lastRun = nil
         let targets = pendingItems
         let selected = preset
         let mode = saveMode
         let destDir = chosenDir
-        // Estimate pipelines for other presets keep running in the background:
-        // they fill the size brackets on the preset cards and make a later
-        // "save another version" run instant. The shared gate keeps memory sane.
+        isCompressing = true
+        lastRun = nil
+        completedCount = 0
+        runTotal = targets.count
         targets.forEach { item in
             withAnimation { item.status = .compressing }
         }
 
         Task {
-            var savedTotal: Int64 = 0
-            var okCount = 0
-            for item in targets {
-                // The user may have removed this item while earlier files were
-                // processing — never touch files the user excluded.
-                guard items.contains(where: { $0.id == item.id }) else { continue }
-                // Use the precomputed temp result when available (instant), else compress now.
-                let result: CompressionResult?
-                if let cached = item.estimate(for: selected),
-                   FileManager.default.fileExists(atPath: cached.outputURL.path) {
-                    result = cached
-                } else {
-                    let source = item.sourceURL   // snapshot: valid even after Replace
-                    let dir = item.tempDir
-                    await estimateGate.wait()   // same memory budget as estimates
-                    result = await Task.detached(priority: .userInitiated) {
-                        try? Compressor.compress(source, preset: selected, workDir: dir)
-                    }.value
-                    await estimateGate.signal()
+            var summary = RunSummary()
+            await withTaskGroup(of: CompressionResult?.self) { group in
+                for item in targets {
+                    group.addTask { @MainActor in
+                        await self.process(item, preset: selected, mode: mode, destDir: destDir)
+                    }
                 }
-                guard let result else {
-                    withAnimation { item.status = .failed(CompressionError.writeFailed.errorDescription!) }
-                    continue
-                }
-                // Re-check membership after the await — removal may have landed meanwhile.
-                guard items.contains(where: { $0.id == item.id }) else { continue }
-                let originalURL = item.url
-                do {
-                    // File I/O can be seconds for huge PDFs — keep it off the main actor.
-                    let dest = try await Task.detached(priority: .userInitiated) {
-                        try Self.deliver(result: result, original: originalURL, mode: mode,
-                                         preset: selected, destDir: destDir)
-                    }.value
-                    item.savedURL = dest
-                    item.deliveredResult = result
-                    item.deliveredPreset = selected
-                    savedTotal += result.savedBytes
-                    okCount += 1
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) { item.status = .done }
-                } catch {
-                    withAnimation { item.status = .failed("Couldn't save: \(error.localizedDescription)") }
+                for await delivered in group {
+                    completedCount += 1
+                    guard let delivered else { continue }
+                    summary.files += 1
+                    summary.inputBytes += delivered.inputBytes
+                    summary.outputBytes += delivered.outputBytes
                 }
             }
             withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
                 isCompressing = false
-                if okCount > 0 && !items.isEmpty { lastRun = (okCount, savedTotal) }
+                if summary.files > 0 && !items.isEmpty { lastRun = summary }
             }
+        }
+    }
+
+    /// Compresses one item under the memory gate and moves the result to its
+    /// final home. Returns nil when the item failed or was removed meanwhile.
+    private func process(_ item: PDFItem, preset: Preset, mode: SaveMode, destDir: URL?) async -> CompressionResult? {
+        let source = item.sourceURL   // snapshot: valid even after Replace
+        let dir = item.tempDir
+        await gate.wait()
+        let result = await Task.detached(priority: .userInitiated) {
+            try? Compressor.compress(source, preset: preset, workDir: dir)
+        }.value
+        await gate.signal()
+
+        // Never touch files the user excluded while others were processing.
+        guard items.contains(where: { $0.id == item.id }) else { return nil }
+        guard let result else {
+            withAnimation { item.status = .failed(CompressionError.writeFailed.errorDescription!) }
+            return nil
+        }
+        let originalURL = item.url
+        do {
+            // File I/O can be seconds for huge PDFs, keep it off the main actor.
+            let dest = try await Task.detached(priority: .userInitiated) {
+                try Self.deliver(result: result, original: originalURL, mode: mode,
+                                 preset: preset, destDir: destDir)
+            }.value
+            item.savedURL = dest
+            item.result = result
+            item.resultPreset = preset
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) { item.status = .done }
+            return result
+        } catch {
+            withAnimation { item.status = .failed("Couldn't save: \(error.localizedDescription)") }
+            return nil
         }
     }
 
@@ -356,7 +309,7 @@ final class AppState {
         switch mode {
         case .replace:
             // Stage-first so a failure can never strand the user's file:
-            // 1. copy the result next to the original under a hidden name —
+            // 1. copy the result next to the original under a hidden name,
             //    proves space & writability while the original is untouched;
             // 2. move the original to the Trash (recoverable, as promised);
             // 3. same-volume rename of the staged file into place (no extra

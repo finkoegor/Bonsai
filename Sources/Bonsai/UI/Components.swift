@@ -125,36 +125,6 @@ struct SpinnerRing: View {
     }
 }
 
-// MARK: - Shimmer placeholder (for totals while estimating)
-
-struct Shimmer: View {
-    @Environment(\.theme) private var theme
-    var width: CGFloat = 70
-    var height: CGFloat = 14
-    @State private var phase: CGFloat = -1
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: height / 2, style: .continuous)
-            .fill(theme.text3.opacity(0.25))
-            .frame(width: width, height: height)
-            .overlay(
-                GeometryReader { geo in
-                    LinearGradient(colors: [.clear, theme.surface.opacity(0.9), .clear],
-                                   startPoint: .leading, endPoint: .trailing)
-                        .frame(width: geo.size.width * 0.7)
-                        .offset(x: phase * geo.size.width * 1.6)
-                }
-                .allowsHitTesting(false)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: height / 2, style: .continuous))
-            .onAppear {
-                withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) {
-                    phase = 1
-                }
-            }
-    }
-}
-
 // MARK: - Animated check mark (draw-on)
 
 struct AnimatedCheck: View {
@@ -195,8 +165,8 @@ struct AnimatedCheck: View {
 }
 
 // MARK: - Small colored badge
-// Fixed height so badge and its shimmer placeholder occupy identical space
-// and cards never jump when an estimate lands.
+// Fixed height so the empty slot before a run and the badge after it occupy
+// identical space and cards never jump.
 
 enum BadgeToken {
     static let height: CGFloat = 22

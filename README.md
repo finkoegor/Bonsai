@@ -2,14 +2,14 @@
 
 **Compress PDFs. Keep the quality. Never leave your Mac.**
 
-Bonsai is a tiny native macOS app that shrinks PDF files the way the big web services do, except everything happens locally. No uploads, no accounts, no size limits, no subscription. Drop files, see exact savings before you commit, press one button.
+Bonsai is a tiny native macOS app that shrinks PDF files the way the big web services do, except everything happens locally. No uploads, no accounts, no size limits, no subscription. Drop files, pick a preset, press one button.
 
 ![Bonsai](docs/bonsai.png)
 
 ## Why another PDF compressor?
 
 - **100% local and private.** Your documents never touch a server.
-- **Honest numbers.** Bonsai doesn't guess: it actually compresses in the background while you choose a preset, so the size you see is the size you get. Saving is instant.
+- **Nothing runs until you ask.** Drop files, pick a preset, press the button. Each card then shows the real result, and a before/after slider lets you judge it on your own pages.
 - **Nothing breaks.** Text stays razor-sharp vector (never rasterized). Links, annotations, form fields (with values), outlines and page rotations all survive. Verified by an automated hostile-PDF test suite.
 - **Never inflates.** If compression wins less than 2%, you get your original bytes back, labeled "Already optimized".
 - **Real-world results.** A 70 MB design-tool export (168 JPEG-with-alpha images) compresses to 18 MB on Recommended and 11 MB on Extreme, matching the popular web compressors on the same file.
@@ -22,12 +22,12 @@ Bonsai is a tiny native macOS app that shrinks PDF files the way the big web ser
 | **Recommended** | 120 DPI, QFactor 1.10 | 18 MB (-73%), crisp on any screen |
 | **Extreme** | 72 DPI, QFactor 1.30 | 11 MB (-84%), fine for email |
 
-Judge for yourself: click any file for a before/after slider at full resolution.
+Judge for yourself: click any compressed file for a before/after slider at full resolution.
 
 ## Features
 
 - Batch compression: drop a whole folder's worth of PDFs at once
-- Live per-file savings badges plus total savings, computed for real
+- Per-file and total savings after the run, measured, not guessed
 - Before/after comparison slider with per-page navigation
 - Day / Night theme (Shift-Cmd-D), animated everything
 - "Save a copy" (default) or "Replace original" (original goes to Trash, recoverable; the swap is staged so a failed save can never lose your file)

@@ -22,10 +22,9 @@ struct PreviewWindow: View {
     }
 }
 
-/// Before/after comparison with a draggable divider — the honest way to judge
-/// what a preset does to your pages before committing.
+/// Before/after comparison with a draggable divider: the honest way to judge
+/// what a preset did to your pages.
 struct PreviewSheet: View {
-    @Environment(AppState.self) private var state
     @Environment(\.theme) private var theme
     @Environment(\.dismiss) private var dismiss
     let item: PDFItem
@@ -36,7 +35,7 @@ struct PreviewSheet: View {
     @State private var compressed: NSImage?
     @State private var loading = true
 
-    private var estimate: CompressionResult? { item.estimate(for: state.preset) }
+    private var result: CompressionResult? { item.result }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -48,7 +47,8 @@ struct PreviewSheet: View {
                minHeight: 520, idealHeight: 660, maxHeight: .infinity)
         .focusEffectDisabled()
         .background(theme.bg)
-        .task(id: "\(page)-\(state.preset.rawValue)") { await render() }
+        // Re-render when another preset's result replaces the current one.
+        .task(id: "\(page)-\(result?.outputURL.lastPathComponent ?? "")") { await render() }
     }
 
     // MARK: header
@@ -169,10 +169,10 @@ struct PreviewSheet: View {
     private func labels(in size: CGSize) -> some View {
         ZStack(alignment: .top) {
             HStack {
-                tag("Original · \(Format.size(item.inputBytes))", visible: fraction > 0.18)
+                tag("Original, \(Format.size(item.inputBytes))", visible: fraction > 0.18)
                 Spacer()
-                if let est = estimate {
-                    tag("Compressed · \(Format.size(est.outputBytes))",
+                if let result {
+                    tag("Compressed, \(Format.size(result.outputBytes))",
                         visible: fraction < 0.82, accent: true)
                 }
             }
@@ -201,17 +201,17 @@ struct PreviewSheet: View {
 
     private var footer: some View {
         HStack {
-            Text(state.preset.title)
+            Text(item.resultPreset?.title ?? "")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(theme.accent)
             Spacer()
-            if let est = estimate {
-                Text(est.keptOriginal
+            if let result {
+                Text(result.keptOriginal
                      ? "No meaningful savings, the original is kept as-is"
-                     : "Saves \(Format.size(est.savedBytes)) (−\(Format.percent(est.savedFraction)))")
+                     : "Saved \(Format.size(result.savedBytes)) (-\(Format.percent(result.savedFraction)))")
                     .font(.system(size: 12, weight: .medium))
                     .monospacedDigit()
-                    .foregroundStyle(est.keptOriginal ? theme.text2 : theme.success)
+                    .foregroundStyle(result.keptOriginal ? theme.text2 : theme.success)
             }
         }
         .padding(.horizontal, Layout.inset)
@@ -226,7 +226,7 @@ struct PreviewSheet: View {
         loading = true
         let pageIndex = page
         let srcURL = item.sourceURL   // snapshot: intact even after Replace original
-        let dstURL = estimate?.outputURL
+        let dstURL = result?.outputURL
         let pair: (NSImage?, NSImage?) = await Task.detached(priority: .userInitiated) {
             func renderPage(_ url: URL?) -> NSImage? {
                 guard let url, let doc = PDFDocument(url: url),

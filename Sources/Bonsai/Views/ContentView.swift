@@ -22,9 +22,12 @@ struct ContentView: View {
         .task { await runDebugHooks() }
     }
 
-    /// Test hooks driven by env vars — lets CI/scripts exercise the real UI flow:
+    /// Test hooks driven by env vars, so scripts can exercise the real UI flow:
     /// BONSAI_AUTOLOAD=/a.pdf:/b.pdf  preloads files,
-    /// BONSAI_AUTOCOMPRESS=1          presses the big button once estimates land.
+    /// BONSAI_AUTOCOMPRESS=1          presses the big button once they are read
+    ///                                (BONSAI_OUTDIR=/dir skips the folder panel),
+    /// BONSAI_AUTOPREVIEW=1           opens the before/after window afterwards,
+    /// BONSAI_AUTOPRESET2=low         switches preset and compresses once more.
     private func runDebugHooks() async {
         let env = ProcessInfo.processInfo.environment
         if env["BONSAI_FRONT"] == "1" {
@@ -33,28 +36,16 @@ struct ContentView: View {
         if let paths = env["BONSAI_AUTOLOAD"], !paths.isEmpty {
             state.addURLs(paths.split(separator: ":").map { URL(fileURLWithPath: String($0)) })
         }
-        // BONSAI_AUTOPREVIEW=1 → open the before/after window for the first file.
-        if env["BONSAI_AUTOPREVIEW"] == "1" {
-            while state.items.first.map({ $0.estimate(for: state.preset) == nil }) ?? true {
-                try? await Task.sleep(for: .milliseconds(200))
-            }
-            if let first = state.items.first {
-                openWindow(id: "preview", value: first.id)
-            }
-        }
         guard env["BONSAI_AUTOCOMPRESS"] == "1" else { return }
-        while !(state.totalEstimatedBytes != nil && state.canCompress) {
-            try? await Task.sleep(for: .milliseconds(200))
-        }
+        while !state.canCompress { try? await Task.sleep(for: .milliseconds(200)) }
         state.compressAll()
-        // BONSAI_AUTOPRESET2=low  → after the first run, switch preset
-        // and compress again (the "save one more version and compare" flow).
-        guard let second = env["BONSAI_AUTOPRESET2"].flatMap(Preset.init(rawValue:)) else { return }
         while state.lastRun == nil { try? await Task.sleep(for: .milliseconds(200)) }
-        state.preset = second
-        while !(state.totalEstimatedBytes != nil && state.canCompress) {
-            try? await Task.sleep(for: .milliseconds(200))
+        if env["BONSAI_AUTOPREVIEW"] == "1", let first = state.items.first(where: { $0.result != nil }) {
+            openWindow(id: "preview", value: first.id)
         }
+        guard let second = env["BONSAI_AUTOPRESET2"].flatMap(Preset.init(rawValue:)) else { return }
+        state.preset = second
+        while !state.canCompress { try? await Task.sleep(for: .milliseconds(200)) }
         state.compressAll()
     }
 
