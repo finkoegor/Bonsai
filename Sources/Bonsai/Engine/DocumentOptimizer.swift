@@ -64,11 +64,17 @@ struct DocumentOptimizer {
             arguments.append("--update-from-json=\(updateFile.path)")
         }
         arguments += ["--object-streams=generate", "--compress-streams=y", "--recompress-flate", "--compression-level=9"]
-        if tools.qpdf.run(["--is-linearized", source.path], timeout: 120) == 0 {
+        if isLinearized(source) {
             arguments.append("--linearize")
         }
         arguments.append(output.path)
         return qpdf(arguments)
+    }
+
+    /// Linearized ("fast web view") files stay linearized.
+    private func isLinearized(_ file: URL) -> Bool {
+        guard let report = tools.qpdf.output(["--check-linearization", file.path]) else { return false }
+        return !String(decoding: report, as: UTF8.self).contains("is not linearized")
     }
 
     /// qpdf exits with 3 when it repaired something and still wrote a valid file.
