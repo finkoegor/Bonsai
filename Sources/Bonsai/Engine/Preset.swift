@@ -43,15 +43,15 @@ enum Preset: String, CaseIterable, Identifiable, Codable {
     var profile: EncodingProfile {
         switch self {
         case .low:
-            EncodingProfile(targetDensity: 600, similarity: 0.99, brightnessTolerance: 1,
+            EncodingProfile(targetDensity: 600, similarity: 0.99, worstSimilarity: 0.92, brightnessTolerance: 1,
                             photoQualities: 50...95, losslessQualities: 70...95,
                             maskQuality: 95, maskTolerance: 4)
         case .recommended:
-            EncodingProfile(targetDensity: 300, similarity: 0.95, brightnessTolerance: 1.5,
+            EncodingProfile(targetDensity: 300, similarity: 0.95, worstSimilarity: 0.8, brightnessTolerance: 1.5,
                             photoQualities: 40...90, losslessQualities: 65...90,
                             maskQuality: 85, maskTolerance: 8)
         case .extreme:
-            EncodingProfile(targetDensity: 150, similarity: 0.93, brightnessTolerance: 2,
+            EncodingProfile(targetDensity: 150, similarity: 0.93, worstSimilarity: 0.65, brightnessTolerance: 2,
                             photoQualities: 30...85, losslessQualities: 55...85,
                             maskQuality: 75, maskTolerance: 10)
         }

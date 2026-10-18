@@ -9,6 +9,9 @@ struct EncodingProfile: Sendable {
     /// The lowest `StructuralSimilarity.mean` a re-encoded image may reach
     /// against its reference.
     let similarity: Double
+    /// The lowest `StructuralSimilarity.worst` a re-encoded image may reach,
+    /// so that text, logos and edges never crumble.
+    let worstSimilarity: Double
     /// The largest `StructuralSimilarity.brightnessShift` a re-encoded image
     /// may show, in levels.
     let brightnessTolerance: Double
@@ -24,7 +27,8 @@ struct EncodingProfile: Sendable {
     let maskTolerance: Int
 
     func accepts(_ comparison: StructuralSimilarity) -> Bool {
-        comparison.mean >= similarity && comparison.brightnessShift <= brightnessTolerance
+        comparison.mean >= similarity && comparison.worst >= worstSimilarity
+            && comparison.brightnessShift <= brightnessTolerance
     }
 
     /// Downsampling that keeps more than this share of the linear resolution

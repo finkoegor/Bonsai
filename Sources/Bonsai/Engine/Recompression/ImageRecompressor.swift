@@ -104,10 +104,11 @@ struct ImageRecompressor: Sendable {
             guard let pixels = decodePixels(source) else { return nil }
             let reference = scale.map { downsample(pixels, of: source, scale: $0, alpha: alpha) } ?? pixels
             let chroma = header.chroma ?? .quarter
+            let visibility = finalAlpha.flatMap { $0.hasSize(of: reference) ? $0 : nil }
             let limit = scale == nil ? Int(Double(source.encodedLength) * Self.requiredSaving) : .max
             if let jpeg = QualitySearch(codec: codec).lowestAccepted(
                 reference, qualities: profile.photoQualities, chroma: chroma, limit: limit,
-                accept: { profile.accepts(StructuralSimilarity(reference, $0)) }) {
+                accept: { profile.accepts(StructuralSimilarity(reference, $0, alpha: visibility)) }) {
                 return (.jpeg(jpeg), reference)
             }
             guard scale != nil,
@@ -127,12 +128,15 @@ struct ImageRecompressor: Sendable {
             let reference = scale.map { downsample(pixels, of: source, scale: $0, alpha: alpha) } ?? pixels
             guard let flate = Flate.compressPredicted(reference) else { return nil }
             let lossless = EncodedImage.flate(flate, colors: reference.channels)
-            let check = FidelityCheck(reference: reference,
-                                      alpha: finalAlpha.flatMap { $0.hasSize(of: reference) ? $0 : nil })
+            let visibility = finalAlpha.flatMap { $0.hasSize(of: reference) ? $0 : nil }
+            let check = FidelityCheck(reference: reference, alpha: visibility)
             if let jpeg = QualitySearch(codec: codec).lowestAccepted(
                 reference, qualities: profile.losslessQualities,
                 chroma: .full, limit: flate.count / 2 + 1,
-                accept: { profile.accepts(StructuralSimilarity(reference, $0)) && check.isIndistinguishable(from: $0) }) {
+                accept: {
+                    profile.accepts(StructuralSimilarity(reference, $0, alpha: visibility))
+                        && check.isIndistinguishable(from: $0)
+                }) {
                 return (.jpeg(jpeg), reference)
             }
             return (lossless, reference)
