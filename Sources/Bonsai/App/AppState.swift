@@ -12,7 +12,7 @@ final class AppState {
         didSet {
             UserDefaults.standard.set(preset.rawValue, forKey: "preset")
             if lastRun != nil {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { lastRun = nil }
+                animate(.spring(response: 0.35, dampingFraction: 0.8)) { lastRun = nil }
             }
         }
     }
@@ -49,7 +49,7 @@ final class AppState {
         lastRun = nil
         for url in fresh {
             let item = PDFItem(url: url)
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { items.append(item) }
+            animate(.spring(response: 0.35, dampingFraction: 0.8)) { items.append(item) }
             read(item)
         }
     }
@@ -59,7 +59,7 @@ final class AppState {
         item.readTask?.cancel()
         let directory = item.tempDir
         Task.detached(priority: .background) { try? FileManager.default.removeItem(at: directory) }
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+        animate(.spring(response: 0.3, dampingFraction: 0.85)) {
             items.removeAll { $0.id == item.id }
         }
     }
@@ -71,7 +71,7 @@ final class AppState {
         Task.detached(priority: .background) {
             for directory in directories { try? FileManager.default.removeItem(at: directory) }
         }
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+        animate(.spring(response: 0.35, dampingFraction: 0.85)) {
             items.removeAll()
             lastRun = nil
         }
@@ -99,8 +99,8 @@ final class AppState {
             guard let item, !Task.isCancelled else { return }
             item.pageCount = metadata.pages
             if metadata.snapshotted { item.sourceURL = snapshot }
-            withAnimation(.easeOut(duration: 0.25)) { item.thumbnail = metadata.thumbnail }
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            animate(.easeOut(duration: 0.25)) { item.thumbnail = metadata.thumbnail }
+            animate(.spring(response: 0.4, dampingFraction: 0.8)) {
                 item.status = metadata.error.map { .failed($0) } ?? .ready
             }
         }
@@ -140,7 +140,7 @@ final class AppState {
         lastRun = nil
         completedCount = 0
         runTotal = targets.count
-        targets.forEach { item in withAnimation { item.status = .compressing } }
+        targets.forEach { item in animate(.default) { item.status = .compressing } }
 
         Task {
             var summary = RunSummary()
@@ -158,7 +158,7 @@ final class AppState {
                     summary.outputBytes += delivered.outputBytes
                 }
             }
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
+            animate(.spring(response: 0.45, dampingFraction: 0.8)) {
                 isCompressing = false
                 if summary.files > 0 && !items.isEmpty { lastRun = summary }
             }
@@ -199,7 +199,7 @@ final class AppState {
         case .success(let value):
             compressed = value
         case .failure(let error):
-            withAnimation { item.status = .failed(error.localizedDescription) }
+            animate(.default) { item.status = .failed(error.localizedDescription) }
             return nil
         }
 
@@ -211,11 +211,23 @@ final class AppState {
             item.savedURL = saved
             item.result = compressed
             item.resultPreset = preset
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) { item.status = .done }
+            animate(.spring(response: 0.4, dampingFraction: 0.75)) { item.status = .done }
             return compressed
         } catch {
-            withAnimation { item.status = .failed("Couldn't save: \(error.localizedDescription)") }
+            animate(.default) { item.status = .failed("Couldn't save: \(error.localizedDescription)") }
             return nil
+        }
+    }
+
+    /// Animates only while Bonsai is the active app. An animation started
+    /// while another app is in front, for example right after a file is
+    /// dropped from Finder, stalls until the window gets an event, and the
+    /// window keeps showing its previous state.
+    private func animate(_ animation: Animation, _ changes: () -> Void) {
+        if NSApp.isActive {
+            withAnimation(animation, changes)
+        } else {
+            changes()
         }
     }
 
