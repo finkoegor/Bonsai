@@ -32,16 +32,17 @@ if [ ! -x "$TOOLS/bin/sign_update" ]; then
     tar xf /tmp/sparkle-tools.tar.xz -C "$TOOLS" bin
 fi
 
+APP="Build/Products.noindex/Bonsai.app"
 echo "$VER" > VERSION
 RELEASE=1 ./build.sh
 
 echo "==> notarizing"
-./scripts/notarize.sh Build/Bonsai.app
-spctl --assess --type execute --verbose Build/Bonsai.app
+./scripts/notarize.sh "$APP"
+spctl --assess --type execute --verbose "$APP"
 
 ZIP="Build/Bonsai-$VER.zip"
 rm -f "$ZIP"
-ditto -c -k --keepParent Build/Bonsai.app "$ZIP"
+ditto -c -k --keepParent "$APP" "$ZIP"
 echo "==> zipped: $ZIP ($(du -h "$ZIP" | cut -f1 | tr -d ' '))"
 
 SIG_ATTRS=$("$TOOLS/bin/sign_update" -f "$KEY" "$ZIP")   # sparkle:edSignature="..." length="..."

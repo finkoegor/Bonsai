@@ -1,5 +1,6 @@
 #!/bin/bash
-# Builds Bonsai.app into ./Build
+# Builds Bonsai.app into ./Build/Products.noindex (Spotlight skips .noindex
+# folders, so the build copy does not show up next to the installed app)
 #
 #   ./build.sh            build; refreshes /Applications/Bonsai.app if installed
 #   ./build.sh install    build and install into /Applications
@@ -10,7 +11,7 @@ INSTALL=0
 if [ "${1:-}" = "install" ]; then INSTALL=1; fi
 
 VER="$(cat VERSION 2>/dev/null || echo 1.0.0)"
-APP="Build/Bonsai.app"
+APP="Build/Products.noindex/Bonsai.app"
 DEST="/Applications/Bonsai.app"
 
 echo "==> swift build (release, v$VER)"
