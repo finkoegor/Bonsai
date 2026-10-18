@@ -31,10 +31,10 @@ struct EncodingProfile: Sendable {
 
     /// The thresholds hold for an image shown at its own resolution. An image
     /// drawn at a lower density than `viewingDensity` is magnified on screen
-    /// by `magnification` and its artifacts with it, so the allowed loss
-    /// shrinks in proportion.
+    /// by `magnification`, and its artifacts grow in both directions, so the
+    /// allowed loss shrinks with the square of the magnification.
     func accepts(_ comparison: StructuralSimilarity, magnification: Double) -> Bool {
-        let factor = max(1, magnification)
+        let factor = pow(max(1, magnification), 2)
         return comparison.mean >= 1 - (1 - similarity) / factor
             && comparison.worst >= 1 - (1 - worstSimilarity) / factor
             && comparison.brightnessShift <= brightnessTolerance / factor

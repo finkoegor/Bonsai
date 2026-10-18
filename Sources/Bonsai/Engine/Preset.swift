@@ -48,11 +48,11 @@ enum Preset: String, CaseIterable, Identifiable, Codable {
                             maskQuality: 95, maskTolerance: 4)
         case .recommended:
             EncodingProfile(targetDensity: 300, viewingDensity: 150, similarity: 0.95, worstSimilarity: 0.8, brightnessTolerance: 1.5,
-                            photoQualities: 40...90, losslessQualities: 65...90,
+                            photoQualities: 40...95, losslessQualities: 65...95,
                             maskQuality: 85, maskTolerance: 8)
         case .extreme:
             EncodingProfile(targetDensity: 150, viewingDensity: 130, similarity: 0.93, worstSimilarity: 0.65, brightnessTolerance: 2,
-                            photoQualities: 30...85, losslessQualities: 55...85,
+                            photoQualities: 30...95, losslessQualities: 55...95,
                             maskQuality: 75, maskTolerance: 10)
         }
     }
