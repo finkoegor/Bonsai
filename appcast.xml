@@ -4,6 +4,15 @@
     <title>Bonsai</title>
     <language>en</language>
     <item>
+      <title>1.2.0</title>
+      <pubDate>Sun, 18 Oct 2026 15:56:21 +0800</pubDate>
+      <sparkle:version>1.2.0</sparkle:version>
+      <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[New compression engine. Only image data is re-encoded: text, vectors, fonts, transparency and Figma effects keep their exact bytes. Each image gets its own JPEG quality, checked against the original so that text in screenshots and mockups never crumbles, soft masks shrink without losing their edges, duplicate images collapse into one and images placed smaller than their pixel size are downsampled. Files are compressed only when you press the button. Bonsai now needs qpdf and mozjpeg from Homebrew (brew install qpdf mozjpeg); Ghostscript is no longer used.]]></description>
+      <enclosure url="https://github.com/finkoegor/Bonsai/releases/download/v1.2.0/Bonsai-1.2.0.zip" sparkle:edSignature="nk3MIX4tw2YA/BYoF5FNXv9jtFGS418I68rhpdYzk/NUk5zAIaNrE+FXqJLuoAOxPq/40chJR1bYBnu5Y4lYAw==" length="2066502" type="application/octet-stream"/>
+    </item>
+    <item>
       <title>1.1.0</title>
       <pubDate>Sat, 17 Oct 2026 22:29:20 +0800</pubDate>
       <sparkle:version>1.1.0</sparkle:version>
