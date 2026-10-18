@@ -18,13 +18,19 @@ struct DocumentOptimizer {
             else { return false }
         }
 
+        // Flate streams (page content, fonts, forms) are first recompressed at
+        // the highest zlib level, a lossless step. It comes before the image
+        // update because qpdf drops PNG predictors from whatever it recompresses.
+        let repacked = workspace.appendingPathComponent("repacked.pdf")
         let structureFile = workspace.appendingPathComponent("structure.json")
         let contentsFile = workspace.appendingPathComponent("contents.json")
-        guard qpdf(["--json=2", "--json-key=qpdf", "--json-key=pages", "--json-stream-data=none",
-                    "--decode-level=none", source.path, structureFile.path]),
+        guard qpdf([source.path, "--recompress-flate", "--compression-level=9",
+                    "--object-streams=preserve", repacked.path]),
+              qpdf(["--json=2", "--json-key=qpdf", "--json-key=pages", "--json-stream-data=none",
+                    "--decode-level=none", repacked.path, structureFile.path]),
               qpdf(["--json=2", "--json-key=qpdf", "--json-stream-data=file",
                     "--json-stream-prefix=\(streams.path)/s", "--decode-level=generalized",
-                    source.path, contentsFile.path]),
+                    repacked.path, contentsFile.path]),
               let structure = try? JSONParser.parse(Data(contentsOf: structureFile)),
               let contents = try? JSONParser.parse(Data(contentsOf: contentsFile)),
               let store = try? PDFObjectStore(json: structure) else { return false }
@@ -56,14 +62,14 @@ struct DocumentOptimizer {
             }
         }
 
-        var arguments = [source.path]
+        var arguments = [repacked.path]
         if !update.isEmpty {
             let updateFile = workspace.appendingPathComponent("update.json")
             guard (try? update.json(maxObjectID: store.maxObjectID, generations: store.generations)
                 .write(to: updateFile)) != nil else { return false }
             arguments.append("--update-from-json=\(updateFile.path)")
         }
-        arguments += ["--object-streams=generate", "--compress-streams=y", "--recompress-flate", "--compression-level=9"]
+        arguments += ["--object-streams=generate", "--compress-streams=y", "--compression-level=9"]
         if isLinearized(source) {
             arguments.append("--linearize")
         }
@@ -71,10 +77,14 @@ struct DocumentOptimizer {
         return qpdf(arguments)
     }
 
-    /// Linearized ("fast web view") files stay linearized.
+    /// Linearized ("fast web view") files stay linearized. Exporters often
+    /// write slightly inaccurate hint tables, which qpdf reports as warnings.
     private func isLinearized(_ file: URL) -> Bool {
-        guard let report = tools.qpdf.output(["--check-linearization", file.path]) else { return false }
-        return !String(decoding: report, as: UTF8.self).contains("is not linearized")
+        let report = workspace.appendingPathComponent("linearization.txt")
+        guard let status = tools.qpdf.run(["--check-linearization", file.path], output: report),
+              status == 0 || status == 3,
+              let text = try? String(contentsOf: report, encoding: .utf8) else { return false }
+        return !text.contains("is not linearized")
     }
 
     /// qpdf exits with 3 when it repaired something and still wrote a valid file.
