@@ -17,9 +17,11 @@ Bonsai is a small native macOS app that shrinks PDF files locally. No uploads, n
 
 | Preset | Images | Design deck exported from Figma, 19 MB |
 |---|---|---|
-| **Low compression** | Visually identical even when zoomed in, never denser than 600 ppi | RESULT_LOW |
-| **Recommended** | Sharp on Retina displays, never denser than 300 ppi | RESULT_RECOMMENDED |
-| **Extreme compression** | Sized for full screen viewing, never denser than 150 ppi | RESULT_EXTREME |
+| **Low compression** | Visually identical even when zoomed in, never denser than 600 ppi | 13.4 MB (-29%) |
+| **Recommended** | Sharp on Retina displays, never denser than 300 ppi | 9.7 MB (-49%) |
+| **Extreme compression** | Sized for full screen viewing, never denser than 150 ppi | 6.9 MB (-64%) |
+
+Across 18 test files from 12 different exporters (252 MB in total) the presets give 137 MB, 106 MB and 93 MB.
 
 Pixel density is measured at the largest size each image is drawn on any page, so an avatar exported at 1024 pixels and placed at the size of a thumbnail shrinks, while a full-bleed photo keeps its resolution.
 
