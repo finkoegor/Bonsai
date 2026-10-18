@@ -13,7 +13,7 @@ VER="$(cat VERSION 2>/dev/null || echo 1.0.0)"
 APP="Build/Bonsai.app"
 DEST="/Applications/Bonsai.app"
 
-echo "▸ swift build (release, v$VER)"
+echo "==> swift build (release, v$VER)"
 swift build -c release 2>&1 | tail -3
 
 BIN=".build/release/Bonsai"
@@ -87,7 +87,7 @@ else
     codesign --force --deep --sign - "$APP"
 fi
 codesign --verify --strict "$APP"
-echo "▸ built: $APP (v$VER), signed: ${IDENTITY:-ad hoc}"
+echo "==> built: $APP (v$VER), signed: ${IDENTITY:-ad hoc}"
 
 # Install into /Applications on demand, and auto-refresh an existing install
 # on every subsequent build.
@@ -99,9 +99,9 @@ if [ "$INSTALL" = 1 ] || [ -d "$DEST" ]; then
         sleep 1
     fi
     rsync -a --delete "$APP/" "$DEST/"
-    echo "▸ installed: $DEST"
+    echo "==> installed: $DEST"
     if [ "$WAS_RUNNING" = 1 ]; then
         open "$DEST"
-        echo "▸ relaunched"
+        echo "==> relaunched"
     fi
 fi

@@ -1,32 +1,9 @@
-import SwiftUI
 import PDFKit
+import SwiftUI
 
-/// Hosts the comparison in its own window; resolves the item by id so a
-/// removed file simply closes the window instead of dangling.
-struct PreviewWindow: View {
-    @Environment(AppState.self) private var state
+/// The original and the compressed page under a draggable divider.
+struct ComparisonView: View {
     @Environment(\.theme) private var theme
-    @Environment(\.dismiss) private var dismiss
-    let itemID: UUID?
-
-    var body: some View {
-        if let item = state.items.first(where: { $0.id == itemID }) {
-            PreviewSheet(item: item)
-                .navigationTitle(item.name)
-        } else {
-            Color.clear
-                .frame(minWidth: 400, minHeight: 300)
-                .background(theme.bg)
-                .onAppear { dismiss() }
-        }
-    }
-}
-
-/// Before/after comparison with a draggable divider: the honest way to judge
-/// what a preset did to your pages.
-struct PreviewSheet: View {
-    @Environment(\.theme) private var theme
-    @Environment(\.dismiss) private var dismiss
     let item: PDFItem
 
     @State private var page = 0
@@ -47,11 +24,10 @@ struct PreviewSheet: View {
                minHeight: 520, idealHeight: 660, maxHeight: .infinity)
         .focusEffectDisabled()
         .background(theme.bg)
-        // Re-render when another preset's result replaces the current one.
         .task(id: "\(page)-\(result?.outputURL.lastPathComponent ?? "")") { await render() }
     }
 
-    // MARK: header
+    // MARK: Header
 
     private var header: some View {
         HStack(spacing: 12) {
@@ -98,24 +74,22 @@ struct PreviewSheet: View {
         }
     }
 
-    // MARK: comparison area
+    // MARK: Comparison
 
     private var comparison: some View {
-        GeometryReader { geo in
+        GeometryReader { geometry in
             ZStack {
                 theme.wellBG
                 if let original, let compressed {
                     ZStack {
-                        // After (right side, full)
-                        pageImage(compressed, in: geo.size)
-                        // Before (left of the divider)
-                        pageImage(original, in: geo.size)
+                        pageImage(compressed, in: geometry.size)
+                        pageImage(original, in: geometry.size)
                             .mask(alignment: .leading) {
-                                Rectangle().frame(width: geo.size.width * fraction)
+                                Rectangle().frame(width: geometry.size.width * fraction)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                        divider(in: geo.size)
-                        labels(in: geo.size)
+                        divider(in: geometry.size)
+                        labels(in: geometry.size)
                     }
                     .transition(.opacity)
                 } else if loading {
@@ -125,9 +99,9 @@ struct PreviewSheet: View {
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
-                    .onChanged { v in
+                    .onChanged { drag in
                         withAnimation(.interactiveSpring) {
-                            fraction = min(0.98, max(0.02, v.location.x / geo.size.width))
+                            fraction = min(0.98, max(0.02, drag.location.x / geometry.size.width))
                         }
                     }
             )
@@ -135,8 +109,8 @@ struct PreviewSheet: View {
         .animation(.easeOut(duration: 0.25), value: original != nil)
     }
 
-    private func pageImage(_ img: NSImage, in size: CGSize) -> some View {
-        Image(nsImage: img)
+    private func pageImage(_ image: NSImage, in size: CGSize) -> some View {
+        Image(nsImage: image)
             .resizable()
             .scaledToFit()
             .padding(24)
@@ -197,7 +171,7 @@ struct PreviewSheet: View {
             .animation(.easeOut(duration: 0.2), value: visible)
     }
 
-    // MARK: footer
+    // MARK: Footer
 
     private var footer: some View {
         HStack {
@@ -220,23 +194,23 @@ struct PreviewSheet: View {
         .overlay(alignment: .top) { Rectangle().fill(theme.border).frame(height: 1) }
     }
 
-    // MARK: rendering
+    // MARK: Rendering
 
+    /// Reads the original from the item's snapshot, which survives
+    /// "Replace original".
     private func render() async {
         loading = true
-        let pageIndex = page
-        let srcURL = item.sourceURL   // snapshot: intact even after Replace original
-        let dstURL = result?.outputURL
+        let index = page
+        let before = item.sourceURL
+        let after = result?.outputURL
         let pair: (NSImage?, NSImage?) = await Task.detached(priority: .userInitiated) {
-            func renderPage(_ url: URL?) -> NSImage? {
-                guard let url, let doc = PDFDocument(url: url),
-                      let p = doc.page(at: pageIndex) else { return nil }
-                let bounds = p.bounds(for: .cropBox)
-                let scale = min(3, 1600 / max(bounds.width, 1))
-                return p.thumbnail(of: CGSize(width: bounds.width * scale,
-                                              height: bounds.height * scale), for: .cropBox)
+            func render(_ url: URL?) -> NSImage? {
+                guard let url, let document = PDFDocument(url: url), let page = document.page(at: index) else { return nil }
+                let bounds = page.bounds(for: .cropBox)
+                let scale = min(4, 2400 / max(bounds.width, 1))
+                return page.thumbnail(of: CGSize(width: bounds.width * scale, height: bounds.height * scale), for: .cropBox)
             }
-            return (renderPage(srcURL), renderPage(dstURL))
+            return (render(before), render(after))
         }.value
         if Task.isCancelled { return }
         withAnimation(.easeOut(duration: 0.25)) {

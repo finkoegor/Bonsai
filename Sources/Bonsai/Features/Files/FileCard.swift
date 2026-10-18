@@ -1,89 +1,5 @@
 import SwiftUI
 
-struct FileGrid: View {
-    @Environment(AppState.self) private var state
-    @Environment(\.theme) private var theme
-    let openPreview: (PDFItem) -> Void
-
-    private let columns = [GridItem(.adaptive(minimum: 172, maximum: 220), spacing: 16)]
-
-    var body: some View {
-        VStack(spacing: 0) {
-            header
-            ScrollView {
-                LazyVGrid(columns: columns, spacing: 16) {
-                    ForEach(state.items) { item in
-                        FileCard(item: item, openPreview: openPreview)
-                            .transition(.asymmetric(
-                                insertion: .scale(scale: 0.85).combined(with: .opacity),
-                                removal: .scale(scale: 0.9).combined(with: .opacity)))
-                    }
-                    addTile
-                }
-                .padding(Layout.inset)
-                .padding(.bottom, 12)
-            }
-        }
-    }
-
-    private var header: some View {
-        HStack(spacing: 10) {
-            Text("\(state.items.count) \(state.items.count == 1 ? "file" : "files")")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(theme.text)
-                .contentTransition(.numericText())
-                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: state.items.count)
-            Text(Format.size(state.listBytes))
-                .font(.system(size: 13))
-                .monospacedDigit()
-                .foregroundStyle(theme.text2)
-            Spacer()
-            Button {
-                state.clearAll()
-            } label: {
-                HStack(spacing: 5) {
-                    Icon(name: "trash-alt", size: 12)
-                    Text("Clear all")
-                }
-            }
-            .buttonStyle(QuietButtonStyle())
-            .disabled(state.isCompressing)
-            .opacity(state.isCompressing ? 0.4 : 1)
-        }
-        // Same vertical axis as the side panel header: both sit on the 24pt
-        // grid with a 40pt row, so their centers align across the divider.
-        .frame(height: Layout.headerHeight)
-        .padding(.horizontal, Layout.inset)
-        .padding(.top, Layout.inset)
-        .padding(.bottom, 4)
-    }
-
-    private var addTile: some View {
-        Button {
-            BonsaiApp.openPanel(into: state)
-        } label: {
-            VStack(spacing: 10) {
-                Icon(name: "plus", size: 22)
-                Text("Add PDFs")
-                    .font(.system(size: 12, weight: .medium))
-            }
-            .foregroundStyle(theme.text3)
-            .frame(maxWidth: .infinity, minHeight: 208)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
-                    .foregroundStyle(theme.borderStrong)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .disabled(state.isCompressing)
-        .modifier(HoverScale(scale: 1.02))
-    }
-}
-
-// MARK: - File card
-
 struct FileCard: View {
     @Environment(AppState.self) private var state
     @Environment(\.theme) private var theme
@@ -110,9 +26,9 @@ struct FileCard: View {
         .scaleEffect(hovering ? 1.015 : 1)
         .animation(.spring(response: 0.3, dampingFraction: 0.75), value: hovering)
         .onHover { hovering = $0 }
-        .onTapGesture { openPreviewIfDone() }
+        .onTapGesture { previewIfCompressed() }
         .contextMenu {
-            Button("Preview Before / After") { openPreviewIfDone() }
+            Button("Preview Before / After") { previewIfCompressed() }
                 .disabled(item.result == nil)
             Button("Show in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([item.savedURL ?? item.url])
@@ -123,19 +39,18 @@ struct FileCard: View {
         }
     }
 
-    /// The comparison needs an "after": it opens once the file has been compressed.
-    private func openPreviewIfDone() {
+    private func previewIfCompressed() {
         if item.result != nil { openPreview(item) }
     }
 
-    // MARK: thumbnail
+    // MARK: Thumbnail
 
     private var thumbnailArea: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(theme.wellBG)
-            if let thumb = item.thumbnail {
-                Image(nsImage: thumb)
+            if let thumbnail = item.thumbnail {
+                Image(nsImage: thumbnail)
                     .resizable()
                     .scaledToFit()
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -146,15 +61,13 @@ struct FileCard: View {
                 Icon(name: "file-alt", size: 30)
                     .foregroundStyle(theme.text3)
             }
-
             statusOverlay
         }
         .frame(height: 132)
         .padding(8)
     }
 
-    /// The item is saved with the preset the user is looking at right now.
-    private var doneForCurrentPreset: Bool {
+    private var savedWithCurrentPreset: Bool {
         item.status == .done && item.resultPreset == state.preset
     }
 
@@ -162,29 +75,23 @@ struct FileCard: View {
     private var statusOverlay: some View {
         switch item.status {
         case .reading:
-            overlayChip { SpinnerRing(size: 15, line: 2) } label: { Text("Reading…") }
+            chip { SpinnerRing(size: 15, line: 2) } label: { Text("Reading…") }
         case .compressing:
-            overlayChip { SpinnerRing(size: 15, line: 2) } label: { Text("Compressing…") }
+            chip { SpinnerRing(size: 15, line: 2) } label: { Text("Compressing…") }
         case .done:
             if hovering {
-                overlayChip {
-                    Icon(name: "eye", size: 13)
-                } label: {
-                    Text("Preview")
-                }
-                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                chip { Icon(name: "eye", size: 13) } label: { Text("Preview") }
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
             } else {
-                overlayChip {
+                chip {
                     Icon(name: "check-circle", size: 13).foregroundStyle(theme.success)
                 } label: {
-                    Text(doneForCurrentPreset
-                         ? "Saved"
-                         : "Saved as \(item.resultPreset?.rawValue ?? "")")
+                    Text(savedWithCurrentPreset ? "Saved" : "Saved as \(item.resultPreset?.rawValue ?? "")")
                         .foregroundStyle(theme.success)
                 }
             }
         case .failed(let reason):
-            overlayChip {
+            chip {
                 Icon(name: "exclamation-triangle", size: 13).foregroundStyle(theme.danger)
             } label: {
                 Text(reason).foregroundStyle(theme.danger)
@@ -194,8 +101,8 @@ struct FileCard: View {
         }
     }
 
-    private func overlayChip<I: View, L: View>(@ViewBuilder icon: () -> I,
-                                               @ViewBuilder label: () -> L) -> some View {
+    private func chip<Leading: View, Label: View>(@ViewBuilder icon: () -> Leading,
+                                                  @ViewBuilder label: () -> Label) -> some View {
         HStack(spacing: 6) {
             icon()
             label()
@@ -215,7 +122,7 @@ struct FileCard: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: item.status)
     }
 
-    // MARK: info
+    // MARK: Details
 
     private var info: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -230,7 +137,6 @@ struct FileCard: View {
                 .font(.system(size: 11))
                 .monospacedDigit()
                 .foregroundStyle(theme.text2)
-
             resultBadge
                 .padding(.top, 3)
         }
@@ -240,21 +146,19 @@ struct FileCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// What landed on disk. Before the run the slot stays empty at the same
-    /// height, so the card doesn't jump when the badge appears.
     @ViewBuilder
     private var resultBadge: some View {
         if case .failed = item.status {
-            Badge(text: "Skipped", fg: theme.danger, bg: theme.dangerSoft)
-        } else if let r = item.result {
-            Badge(text: r.keptOriginal
-                    ? "Already optimized"
-                    : "\(Format.size(r.outputBytes))  -\(Format.percent(r.savedFraction))",
-                  fg: r.keptOriginal ? theme.text2 : theme.success,
-                  bg: r.keptOriginal ? theme.wellBG : theme.successSoft)
+            Badge(text: "Skipped", foreground: theme.danger, background: theme.dangerSoft)
+        } else if let result = item.result {
+            Badge(text: result.keptOriginal
+                      ? "Already optimized"
+                      : "\(Format.size(result.outputBytes))  -\(Format.percent(result.savedFraction))",
+                  foreground: result.keptOriginal ? theme.text2 : theme.success,
+                  background: result.keptOriginal ? theme.wellBG : theme.successSoft)
                 .transition(.scale(scale: 0.9).combined(with: .opacity))
         } else {
-            Color.clear.frame(height: BadgeToken.height)
+            Color.clear.frame(height: Badge.height)
         }
     }
 

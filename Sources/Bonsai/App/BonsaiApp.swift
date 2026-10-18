@@ -1,14 +1,14 @@
-import SwiftUI
 import AppKit
-import UniformTypeIdentifiers
 import Sparkle
+import SwiftUI
+import UniformTypeIdentifiers
 
 @main
 struct BonsaiApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var state = AppState.shared
     @State private var themeStore = ThemeStore.shared
-    /// Sparkle auto-updater: checks the appcast feed from Info.plist (SUFeedURL).
+    /// Checks the appcast named by SUFeedURL in Info.plist.
     private let updater = SPUStandardUpdaterController(startingUpdater: true,
                                                       updaterDelegate: nil,
                                                       userDriverDelegate: nil)
@@ -25,8 +25,6 @@ struct BonsaiApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1120, height: 700)
 
-        // Before/after preview lives in its own window: movable, resizable,
-        // full-screenable — everything a sheet can't do.
         WindowGroup("Preview", id: "preview", for: UUID.self) { $itemID in
             PreviewWindow(itemID: itemID)
                 .environment(state)
@@ -68,22 +66,5 @@ struct BonsaiApp: App {
         if panel.runModal() == .OK {
             state.addURLs(panel.urls)
         }
-    }
-}
-
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    // PDFs dropped on the Dock icon / "Open With → Bonsai"
-    func application(_ application: NSApplication, open urls: [URL]) {
-        Task { @MainActor in
-            AppState.shared.addURLs(urls)
-        }
-    }
-
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
-    }
-
-    func applicationWillTerminate(_ notification: Notification) {
-        Compressor.cleanupTemp()
     }
 }

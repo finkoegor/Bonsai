@@ -2,56 +2,65 @@
 
 **Compress PDFs. Keep the quality. Never leave your Mac.**
 
-Bonsai is a tiny native macOS app that shrinks PDF files the way the big web services do, except everything happens locally. No uploads, no accounts, no size limits, no subscription. Drop files, pick a preset, press one button.
+Bonsai is a small native macOS app that shrinks PDF files locally. No uploads, no accounts, no size limits, no subscription. Drop files, pick a preset, press one button.
 
 ![Bonsai](docs/bonsai.png)
 
-## Why another PDF compressor?
+## Why Bonsai
 
 - **100% local and private.** Your documents never touch a server.
-- **Nothing runs until you ask.** Drop files, pick a preset, press the button. Each card then shows the real result, and a before/after slider lets you judge it on your own pages.
-- **Nothing breaks.** Text stays razor-sharp vector (never rasterized). Links, annotations, form fields (with values), outlines and page rotations all survive. Verified by an automated hostile-PDF test suite.
+- **Nothing breaks.** Only image data is re-encoded. Every other object in the file keeps its exact bytes: text, vector art, fonts, gradients, transparency groups, blend modes, Figma inner shadows and glows, annotations, links, form fields and outlines.
+- **Quality is measured, not guessed.** Each image gets the lowest JPEG quality that still matches its original by SSIM, so smooth gradients take a few kilobytes while detailed photos and film grain keep what they need.
 - **Never inflates.** If compression wins less than 2%, you get your original bytes back, labeled "Already optimized".
-- **Real-world results.** A 70 MB design-tool export (168 JPEG-with-alpha images) compresses to 18 MB on Recommended and 11 MB on Extreme, matching the popular web compressors on the same file.
 
 ## Presets
 
-| Preset | Images | Result on a real 67 MB design export |
+| Preset | Images | Design deck exported from Figma, 19 MB |
 |---|---|---|
-| **Low compression** | 200 DPI, JPEG QFactor 0.40 | 38 MB (-43%), visually lossless |
-| **Recommended** | 120 DPI, QFactor 1.10 | 18 MB (-73%), crisp on any screen |
-| **Extreme** | 72 DPI, QFactor 1.30 | 11 MB (-84%), fine for email |
+| **Low compression** | Visually identical even when zoomed in, never denser than 600 ppi | RESULT_LOW |
+| **Recommended** | Sharp on Retina displays, never denser than 300 ppi | RESULT_RECOMMENDED |
+| **Extreme compression** | Sized for full screen viewing, never denser than 150 ppi | RESULT_EXTREME |
 
-Judge for yourself: click any compressed file for a before/after slider at full resolution.
+Pixel density is measured at the largest size each image is drawn on any page, so an avatar exported at 1024 pixels and placed at the size of a thumbnail shrinks, while a full-bleed photo keeps its resolution.
+
+Click any compressed file for a before/after slider at full resolution.
 
 ## Features
 
 - Batch compression: drop a whole folder's worth of PDFs at once
-- Per-file and total savings after the run, measured, not guessed
-- Before/after comparison slider with per-page navigation
-- Day / Night theme (Shift-Cmd-D), animated everything
-- "Save a copy" (default) or "Replace original" (original goes to Trash, recoverable; the swap is staged so a failed save can never lose your file)
-- Password-protected and broken files are detected and skipped gracefully
+- Per-file and total savings after every run
+- Before/after comparison with per-page navigation
+- Day and Night themes (Shift-Cmd-D)
+- "Save a copy" or "Replace original" (the original goes to the Trash; the swap is staged, so a failed save never loses your file)
+- Password-protected and broken files are detected and skipped
 - Drag PDFs onto the Dock icon, or use Cmd-O
 
-## The engine
+## How it works
 
-Bonsai has two compression backends and always delivers the smallest valid result:
+1. qpdf lists every object in the file and extracts the streams.
+2. Bonsai follows every page, form XObject and soft mask group with its transformation matrix to learn how large each image is drawn.
+3. Byte-identical images (design tools often embed one bitmap per page) collapse into one.
+4. Images are re-encoded with mozjpeg as baseline JPEG, the form every PDF reader decodes:
+   - JPEGs get the lowest quality that keeps SSIM above the preset's target and smooth areas free of banding;
+   - losslessly stored images (PNG-like) become JPEG only when they are photographic: the result must also pass an outlier and ringing check on visible pixels, so text, line art and UI screenshots stay lossless and are only re-packed with PNG predictors;
+   - soft masks, the alpha channels behind glows, blurs and shadows, become JPEG only when every pixel stays within a few levels of the original;
+   - images denser than the preset allows are downsampled together with their masks by area averaging, weighted by opacity so hidden pixels never bleed into visible edges.
+5. qpdf writes the new image streams into the original file. Nothing else is rewritten; compressed page content is only re-packed losslessly.
+6. Every page is rendered next to the original with Apple's renderer; a page that drifts is copied back from the original.
 
-1. **Ghostscript** (used automatically when installed): re-encodes and downsamples every image class, including JPEG-with-transparency pairs from design tools (Figma, Sketch, Keynote exports) that Apple's frameworks refuse to touch. This is the same technology class the big web services run on their servers.
-2. **Native fallback** (PDFKit + Quartz filters, zero dependencies): solid on scans and photo PDFs, weak on transparency-heavy exports.
+Images that can also be drawn from places Bonsai does not trace, such as patterns, Type 3 glyphs or annotation appearances, are re-encoded but never downsampled.
 
-Either way the output is validated (readable, same page count) and compared against the original; the worse result is discarded. Ghostscript runs as a separate process, so the app itself stays MIT-licensed.
-
-For transparency-heavy design exports (Figma, Sketch, Keynote decks) Bonsai switches to a structure-preserving mode: page content, text, vectors and transparency stay byte-identical, only the image streams change. Embedded JPEGs are re-encoded with mozjpeg at their native resolution (Extreme also downsamples). Soft masks, the alpha channels behind glows, blurs and inner shadows, are usually stored as lossless Flate and often weigh more than the photos they belong to; Bonsai re-encodes them as JPEG too, but keeps a mask only when the round trip stays within a few alpha levels at every pixel, so smooth ramps shrink 10x while hard-edged cutouts keep their original bytes. Bitmaps that the design tool exported once per page collapse into a single object. Such files render exactly like the original in every viewer, including mobile ones, which choke on rewritten transparency. On a 19 MB ten-page Figma deck this gives 13 MB / 10 MB / 5 MB for the three presets.
-
-There is also a visual safety net: every compressed page is rendered with Apple's own PDF renderer and compared against the original (5x5 tile color means). Pages that come out structurally different, for example soft-masked mesh gradients that Ghostscript re-serializes in a way Preview renders as flat or black fills, are spliced back byte-exact from the original file using qpdf. You keep the compression on every healthy page and the original pixels on the fragile ones.
+Results were checked page by page against the originals with seven independent PDF engines: Core Graphics on macOS and iOS (Preview, Safari, Telegram on iPhone), PDFium (Chrome, Edge, Android), pdf.js (Firefox), poppler, MuPDF and Ghostscript, on exports from Figma, Illustrator, InDesign, Photoshop, Keynote, PowerPoint, Canva, CorelDRAW and scanners.
 
 ## Install
 
-Grab the zip from the [latest release](https://github.com/finkoegor/Bonsai/releases/latest), unzip and drop Bonsai.app into /Applications.
+Grab the zip from the [latest release](https://github.com/finkoegor/Bonsai/releases/latest), unzip and drop Bonsai.app into /Applications. Releases are signed with a Developer ID and notarized by Apple, and keep themselves up to date with Sparkle.
 
-Releases are signed with a Developer ID and notarized by Apple, so the app opens with a plain double click, no Gatekeeper warnings. After that it keeps itself fresh: updates arrive via Sparkle, signed with EdDSA.
+Bonsai compresses with two free command line tools. Install them once with [Homebrew](https://brew.sh):
+
+```bash
+brew install qpdf mozjpeg
+```
 
 Or build from source:
 
@@ -61,24 +70,15 @@ cd Bonsai
 ./build.sh install
 ```
 
-The app lands in /Applications. After that, every plain `./build.sh` refreshes the installed copy (and relaunches it if it was running).
-
-Requires macOS 14+. For the strong engine:
-
-```bash
-brew install ghostscript qpdf mozjpeg
-```
-
-First launch from `~/Desktop` or `~/Documents` will ask for folder access. That's the standard macOS prompt; the app only ever reads the PDFs you give it.
+The app lands in /Applications; every later `./build.sh` refreshes the installed copy. Requires macOS 14 or later.
 
 ## Known limitations
 
-- Color-emoji glyphs stay visually intact after compression but lose their text-extraction mapping. Cyrillic, CJK and regular text are unaffected.
-- Without Ghostscript, transparency-heavy design exports barely compress (the app tells you and shows the install command).
+- JPEG 2000, CMYK JPEG, 16-bit and 1-bit images are left as they are.
 - Encrypted PDFs are skipped; unlock them first.
 
 ## License
 
 MIT © 2026 Egor Finko.
 
-Third-party: [Sparkle](https://github.com/sparkle-project/Sparkle) (permissive, bundled) powers updates; icons are [Unicons by Iconscout](https://github.com/Iconscout/unicons) (IconScout Simple License); [Ghostscript](https://ghostscript.com) (AGPL) and [qpdf](https://github.com/qpdf/qpdf) (Apache 2.0) are separate programs invoked as external processes when installed via Homebrew, they are not distributed with the app.
+Third-party: [Sparkle](https://github.com/sparkle-project/Sparkle) (MIT) powers updates; icons are [Unicons by Iconscout](https://github.com/Iconscout/unicons) (IconScout Simple License). [qpdf](https://github.com/qpdf/qpdf) (Apache 2.0) and [mozjpeg](https://github.com/mozilla/mozjpeg) (IJG and BSD licenses) are separate programs installed with Homebrew and run as external processes; they are not distributed with the app.

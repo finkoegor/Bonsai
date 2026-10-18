@@ -25,7 +25,7 @@ IDENTITY="$(./scripts/signing-identity.sh)"
 
 # Bootstrap Sparkle CLI tools once.
 if [ ! -x "$TOOLS/bin/sign_update" ]; then
-    echo "▸ downloading Sparkle tools"
+    echo "==> downloading Sparkle tools"
     mkdir -p "$TOOLS"
     curl -sL -o /tmp/sparkle-tools.tar.xz \
         "https://github.com/sparkle-project/Sparkle/releases/download/2.9.5/Sparkle-2.9.5.tar.xz"
@@ -35,17 +35,17 @@ fi
 echo "$VER" > VERSION
 RELEASE=1 ./build.sh
 
-echo "▸ notarizing"
+echo "==> notarizing"
 ./scripts/notarize.sh Build/Bonsai.app
 spctl --assess --type execute --verbose Build/Bonsai.app
 
 ZIP="Build/Bonsai-$VER.zip"
 rm -f "$ZIP"
 ditto -c -k --keepParent Build/Bonsai.app "$ZIP"
-echo "▸ zipped: $ZIP ($(du -h "$ZIP" | cut -f1 | tr -d ' '))"
+echo "==> zipped: $ZIP ($(du -h "$ZIP" | cut -f1 | tr -d ' '))"
 
 SIG_ATTRS=$("$TOOLS/bin/sign_update" -f "$KEY" "$ZIP")   # sparkle:edSignature="..." length="..."
-echo "▸ signed: $SIG_ATTRS"
+echo "==> signed: $SIG_ATTRS"
 
 URL="https://github.com/$REPO/releases/download/v$VER/Bonsai-$VER.zip"
 DATE=$(date -R)
@@ -77,18 +77,18 @@ else:
 </rss>
 """
 open(path, "w").write(text)
-print("▸ appcast updated")
+print("==> appcast updated")
 EOF
 
 git add VERSION appcast.xml
 git commit -qm "Release $VER"
 git tag "v$VER"
 git push origin main --tags
-echo "▸ pushed main + tag v$VER"
+echo "==> pushed main + tag v$VER"
 
 if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
     gh release create "v$VER" "$ZIP" --repo "$REPO" --title "Bonsai $VER" --notes "$NOTES"
-    echo "▸ GitHub release published"
+    echo "==> GitHub release published"
 else
     echo ""
     echo "gh CLI is not authorized. Finish the release manually:"
