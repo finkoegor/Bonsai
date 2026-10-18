@@ -52,7 +52,22 @@ struct ImageRecompressor: Sendable {
         return scale < EncodingProfile.largestWorthwhileScale ? scale : nil
     }
 
+    /// How much the group is enlarged on screen when the page is viewed at
+    /// the preset's viewing density. Images that may be drawn somewhere the
+    /// scan cannot measure are treated as strongly enlarged.
+    private func magnification(of group: ImageGroup, scale: Double?) -> Double {
+        var largest = 1.0
+        for member in group.members {
+            guard let density = usage.density(of: member), density > 0 else { return Self.unknownMagnification }
+            largest = max(largest, profile.viewingDensity / (density * (scale ?? 1)))
+        }
+        return largest
+    }
+
+    private static let unknownMagnification = 3.0
+
     private func encode(_ group: ImageGroup, scale: Double?) -> [Int: StreamReplacement] {
+        let magnification = magnification(of: group, scale: scale)
         var replacements: [Int: StreamReplacement] = [:]
         var originalMasks: [Int: PixelBuffer] = [:]
         var finalMasks: [Int: PixelBuffer] = [:]
@@ -75,7 +90,8 @@ struct ImageRecompressor: Sendable {
                 $0.width == source.width && $0.height == source.height ? $0 : nil
             }
             let finalAlpha = source.softMask.flatMap { finalMasks[$0] }
-            if let (encoded, size) = encodeBase(source, scale: scale, alpha: alpha, finalAlpha: finalAlpha),
+            if let (encoded, size) = encodeBase(source, scale: scale, alpha: alpha, finalAlpha: finalAlpha,
+                                                magnification: magnification),
                scale != nil || isWorthKeeping(encoded, against: source) {
                 replacements[number] = store(encoded, for: source, size: size)
             }
@@ -98,7 +114,7 @@ struct ImageRecompressor: Sendable {
     // MARK: Base images
 
     private func encodeBase(_ source: ImageSource, scale: Double?, alpha: PixelBuffer?,
-                            finalAlpha: PixelBuffer?) -> (EncodedImage, PixelBuffer)? {
+                            finalAlpha: PixelBuffer?, magnification: Double) -> (EncodedImage, PixelBuffer)? {
         switch source.storage {
         case .jpeg(let header, _):
             guard let pixels = decodePixels(source) else { return nil }
@@ -108,7 +124,8 @@ struct ImageRecompressor: Sendable {
             let limit = scale == nil ? Int(Double(source.encodedLength) * Self.requiredSaving) : .max
             if let jpeg = QualitySearch(codec: codec).lowestAccepted(
                 reference, qualities: profile.photoQualities, chroma: chroma, limit: limit,
-                accept: { profile.accepts(StructuralSimilarity(reference, $0, alpha: visibility)) }) {
+                accept: { profile.accepts(StructuralSimilarity(reference, $0, alpha: visibility),
+                                          magnification: magnification) }) {
                 return (.jpeg(jpeg), reference)
             }
             guard scale != nil,
@@ -134,7 +151,8 @@ struct ImageRecompressor: Sendable {
                 reference, qualities: profile.losslessQualities,
                 chroma: .full, limit: flate.count / 2 + 1,
                 accept: {
-                    profile.accepts(StructuralSimilarity(reference, $0, alpha: visibility))
+                    profile.accepts(StructuralSimilarity(reference, $0, alpha: visibility),
+                                    magnification: magnification)
                         && check.isIndistinguishable(from: $0)
                 }) {
                 return (.jpeg(jpeg), reference)

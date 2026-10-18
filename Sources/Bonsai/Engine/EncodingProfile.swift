@@ -6,6 +6,9 @@ struct EncodingProfile: Sendable {
     /// Images denser than this, measured at the largest size they are drawn
     /// on any page, are downsampled to it.
     let targetDensity: Double
+    /// The density the preset promises to look right at: full screen on a
+    /// Retina display is about 130 to 190 pixels per inch of page.
+    let viewingDensity: Double
     /// The lowest `StructuralSimilarity.mean` a re-encoded image may reach
     /// against its reference.
     let similarity: Double
@@ -26,9 +29,15 @@ struct EncodingProfile: Sendable {
     /// The largest alpha error a JPEG mask may show at any pixel, out of 255.
     let maskTolerance: Int
 
-    func accepts(_ comparison: StructuralSimilarity) -> Bool {
-        comparison.mean >= similarity && comparison.worst >= worstSimilarity
-            && comparison.brightnessShift <= brightnessTolerance
+    /// The thresholds hold for an image shown at its own resolution. An image
+    /// drawn at a lower density than `viewingDensity` is magnified on screen
+    /// by `magnification` and its artifacts with it, so the allowed loss
+    /// shrinks in proportion.
+    func accepts(_ comparison: StructuralSimilarity, magnification: Double) -> Bool {
+        let factor = max(1, magnification)
+        return comparison.mean >= 1 - (1 - similarity) / factor
+            && comparison.worst >= 1 - (1 - worstSimilarity) / factor
+            && comparison.brightnessShift <= brightnessTolerance / factor
     }
 
     /// Downsampling that keeps more than this share of the linear resolution
