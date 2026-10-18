@@ -10,18 +10,18 @@ Bonsai is a small native macOS app that shrinks PDF files locally. No uploads, n
 
 - **100% local and private.** Your documents never touch a server.
 - **Nothing breaks.** Only image data is re-encoded. Every other object in the file keeps its exact bytes: text, vector art, fonts, gradients, transparency groups, blend modes, Figma inner shadows and glows, annotations, links, form fields and outlines.
-- **Quality is measured, not guessed.** Each image gets the lowest JPEG quality that still matches its original by SSIM, so smooth gradients take a few kilobytes while detailed photos and film grain keep what they need.
+- **Quality is measured, not guessed.** Each image gets the lowest JPEG quality at which both the image as a whole and its worst areas (small text, logos, edges) still match the original by SSIM, so smooth gradients take a few kilobytes while UI screenshots, detailed photos and film grain keep what they need.
 - **Never inflates.** If compression wins less than 2%, you get your original bytes back, labeled "Already optimized".
 
 ## Presets
 
 | Preset | Images | Design deck exported from Figma, 19 MB |
 |---|---|---|
-| **Low compression** | Visually identical even when zoomed in, never denser than 600 ppi | 13.4 MB (-29%) |
-| **Recommended** | Sharp on Retina displays, never denser than 300 ppi | 9.7 MB (-49%) |
-| **Extreme compression** | Sized for full screen viewing, never denser than 150 ppi | 6.9 MB (-64%) |
+| **Low compression** | Visually identical even when zoomed in, never denser than 600 ppi | 13.5 MB (-28%) |
+| **Recommended** | Sharp on Retina displays, never denser than 300 ppi | 10.3 MB (-46%) |
+| **Extreme compression** | Sized for full screen viewing, never denser than 150 ppi | 7.0 MB (-63%) |
 
-Across 18 test files from 12 different exporters (252 MB in total) the presets give 137 MB, 106 MB and 93 MB.
+Across 18 test files from 12 different exporters (252 MB in total) the presets give 149 MB, 117 MB and 99 MB.
 
 Pixel density is measured at the largest size each image is drawn on any page, so an avatar exported at 1024 pixels and placed at the size of a thumbnail shrinks, while a full-bleed photo keeps its resolution.
 
@@ -43,7 +43,7 @@ Click any compressed file for a before/after slider at full resolution.
 2. Bonsai follows every page, form XObject and soft mask group with its transformation matrix to learn how large each image is drawn.
 3. Byte-identical images (design tools often embed one bitmap per page) collapse into one.
 4. Images are re-encoded with mozjpeg as baseline JPEG, the form every PDF reader decodes:
-   - JPEGs get the lowest quality that keeps SSIM above the preset's target and smooth areas free of banding;
+   - JPEGs get the lowest quality that keeps SSIM above the preset's target, both on average and in the worst 1% of 8x8 windows placed across JPEG block borders, and keeps smooth areas free of banding;
    - losslessly stored images (PNG-like) become JPEG only when they are photographic: the result must also pass an outlier and ringing check on visible pixels, so text, line art and UI screenshots stay lossless and are only re-packed with PNG predictors;
    - soft masks, the alpha channels behind glows, blurs and shadows, become JPEG only when every pixel stays within a few levels of the original;
    - images denser than the preset allows are downsampled together with their masks by area averaging, weighted by opacity so hidden pixels never bleed into visible edges.
