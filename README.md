@@ -18,24 +18,27 @@ Bonsai is a small native macOS app that shrinks PDF files locally. No uploads, n
 
 | Preset | Images | Design deck exported from Figma, 31.4 MB |
 |---|---|---|
-| **Low compression** | Visually identical even when zoomed in, 300 to 450 ppi | 13.5 MB (-57%) |
-| **Recommended** | Sharp with the page filling a Retina or 5K display, 150 to 200 ppi | 5.5 MB (-82%) |
-| **Extreme compression** | Sized for an ordinary display, 110 to 150 ppi | 4.0 MB (-87%) |
+| **Low compression** | Visually identical even when zoomed in, 300 to 450 ppi | 13.9 MB (-56%) |
+| **Recommended** | Sharp with the page filling a Retina or 5K display, 150 to 200 ppi | 5.9 MB (-81%) |
+| **Extreme compression** | Sized for an ordinary display, 110 to 150 ppi | 4.2 MB (-87%) |
 
-Across 18 test files from 13 different exporters (323 MB in total) the presets give 235 MB, 126 MB and 101 MB, at about four seconds per file. Files whose pages are themselves low-resolution bitmaps compress the least: on screen they are already stretched, and so would be any compression artifact.
+Across 18 test files from 13 different exporters (323 MB in total) the presets give 235 MB, 128 MB and 103 MB, at about four seconds per file. Files whose pages are themselves low-resolution bitmaps compress the least: on screen they are already stretched, and so would be any compression artifact.
 
 The density depends on the page: a wide slide fills a screen with fewer pixels per inch than a small sheet does, so its images need less. It is measured at the largest size each image is drawn on any page, so an avatar exported at 1024 pixels and placed at the size of a thumbnail shrinks, while a full-bleed photo keeps its resolution.
 
-Click any compressed file for a before/after slider at full resolution.
+Click any compressed file for a before/after slider. A tall page can fill the width of the window and scroll, so its details are large enough to judge.
 
 ## Features
 
-- Batch compression: drop a whole folder's worth of PDFs at once
+- Batch compression: drop files or whole folders, PDFs inside are found at any depth
 - Per-file and total savings after every run
+- One version per preset: switch presets to compare them, and what is already made is not made again
+- Stop a running batch at any moment; files already saved stay saved
+- Drag a card out of the window to drop the compressed file into a message or a folder
 - Before/after comparison with per-page navigation
 - Day and Night themes (Shift-Cmd-D)
 - "Save a copy" or "Replace original" (the original goes to the Trash; the swap is staged, so a failed save never loses your file)
-- Password-protected and broken files are detected and skipped
+- Password-protected and broken files are detected and skipped, and can be tried again with a click
 - Drag PDFs onto the Dock icon, or use Cmd-O
 
 ## How it works
@@ -46,6 +49,7 @@ Click any compressed file for a before/after slider at full resolution.
 4. Images are cut down to their visible part. The cut image is painted through a small form XObject in the place of the old one, so page content that draws it stays as it is. A JPEG that only needs cutting is cut without decoding, pixel for pixel.
 5. Images are re-encoded with mozjpeg as baseline JPEG, the form every PDF reader decodes:
    - JPEGs get the lowest quality that keeps SSIM above the preset's target, both on average and in the worst 1% of 8x8 windows placed across JPEG block borders, and keeps smooth areas free of banding; images that are stretched on screen (drawn below the preset's viewing density) must stay proportionally closer to the original;
+   - the quantization tables keep each block's average and its two slowest waves fine, since those carry gradients, glows and shadows, and spend the saving on the detail above them;
    - losslessly stored images (PNG-like) become JPEG only when they are photographic: the result must also pass an outlier and ringing check on visible pixels, so text, line art and UI screenshots stay lossless and are only re-packed with PNG predictors;
    - soft masks, the alpha channels behind glows, blurs and shadows, become JPEG only when every pixel stays within a few levels of the original;
    - images denser than the preset allows are downsampled together with their masks, weighted by opacity so hidden pixels never bleed into visible edges;

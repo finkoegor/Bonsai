@@ -26,12 +26,22 @@ struct FileCard: View {
         .scaleEffect(hovering ? 1.015 : 1)
         .animation(.spring(response: 0.3, dampingFraction: 0.75), value: hovering)
         .onHover { hovering = $0 }
-        .onTapGesture { previewIfCompressed() }
+        .onTapGesture { activate() }
+        .onDrag {
+            // A card drags as its file, straight into a message or a folder:
+            // the compressed version when there is one, the original otherwise.
+            state.beginDragOut()
+            return NSItemProvider(contentsOf: shown?.url ?? item.url) ?? NSItemProvider()
+        }
         .contextMenu {
-            Button("Preview Before / After") { previewIfCompressed() }
-                .disabled(item.result == nil)
+            if item.status.isFailure {
+                Button("Try Again") { state.retry(item) }
+            } else {
+                Button("Preview Before / After") { activate() }
+                    .disabled(shown == nil)
+            }
             Button("Show in Finder") {
-                NSWorkspace.shared.activateFileViewerSelecting([item.savedURL ?? item.url])
+                NSWorkspace.shared.activateFileViewerSelecting([shown?.url ?? item.url])
             }
             Divider()
             Button("Remove", role: .destructive) { state.remove(item) }
@@ -39,8 +49,13 @@ struct FileCard: View {
         }
     }
 
-    private func previewIfCompressed() {
-        if item.result != nil { openPreview(item) }
+    /// A click previews a compressed file and retries a failed one.
+    private func activate() {
+        if item.status.isFailure {
+            state.retry(item)
+        } else if shown != nil {
+            openPreview(item)
+        }
     }
 
     // MARK: Thumbnail
@@ -67,34 +82,50 @@ struct FileCard: View {
         .padding(8)
     }
 
-    private var savedWithCurrentPreset: Bool {
-        item.status == .done && item.resultPreset == state.preset
-    }
+    /// The version behind the chip, the badge and the preview.
+    private var shown: SavedVersion? { item.shownVersion(for: state.preset) }
 
     @ViewBuilder
     private var statusOverlay: some View {
         switch item.status {
         case .reading:
             chip { SpinnerRing(size: 15, line: 2) } label: { Text("Reading…") }
+        case .queued:
+            chip { Image(systemName: "clock").font(.system(size: 11, weight: .medium)) } label: { Text("Waiting") }
+                .foregroundStyle(theme.text2)
         case .compressing:
             chip { SpinnerRing(size: 15, line: 2) } label: { Text("Compressing…") }
         case .done:
             if hovering {
                 chip { Icon(name: "eye", size: 13) } label: { Text("Preview") }
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            } else if shown?.result.keptOriginal == true {
+                chip {
+                    Icon(name: "check-circle", size: 13).foregroundStyle(theme.text2)
+                } label: {
+                    Text("No change").foregroundStyle(theme.text2)
+                }
             } else {
                 chip {
                     Icon(name: "check-circle", size: 13).foregroundStyle(theme.success)
                 } label: {
-                    Text(savedWithCurrentPreset ? "Saved" : "Saved as \(item.resultPreset?.rawValue ?? "")")
+                    Text(shown.map { $0.preset == state.preset ? "Saved" : $0.preset.shortTitle } ?? "Saved")
                         .foregroundStyle(theme.success)
                 }
             }
         case .failed(let reason):
-            chip {
-                Icon(name: "exclamation-triangle", size: 13).foregroundStyle(theme.danger)
-            } label: {
-                Text(reason).foregroundStyle(theme.danger)
+            if hovering {
+                chip { Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .semibold)) } label: {
+                    Text("Try again")
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            } else {
+                chip {
+                    Icon(name: "exclamation-triangle", size: 13).foregroundStyle(theme.danger)
+                } label: {
+                    Text(reason).foregroundStyle(theme.danger)
+                }
+                .help(reason)
             }
         case .ready:
             EmptyView()
@@ -112,9 +143,11 @@ struct FileCard: View {
         .foregroundStyle(theme.text)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
+        // Opaque enough to read over any first page, light or dark.
         .background(
-            Capsule().fill(.ultraThinMaterial)
+            Capsule().fill(theme.surface.opacity(0.94))
                 .overlay(Capsule().strokeBorder(theme.border, lineWidth: 1))
+                .shadow(color: .black.opacity(0.12), radius: 5, y: 2)
         )
         .frame(maxWidth: 150)
         .frame(maxHeight: .infinity, alignment: .bottom)
@@ -131,6 +164,7 @@ struct FileCard: View {
                 .foregroundStyle(theme.text)
                 .lineLimit(1)
                 .truncationMode(.middle)
+                .help(item.url.path)
             Text(item.pageCount > 0
                  ? "\(Format.size(item.inputBytes)), \(item.pageCount) \(item.pageCount == 1 ? "page" : "pages")"
                  : Format.size(item.inputBytes))
@@ -150,7 +184,7 @@ struct FileCard: View {
     private var resultBadge: some View {
         if case .failed = item.status {
             Badge(text: "Skipped", foreground: theme.danger, background: theme.dangerSoft)
-        } else if let result = item.result {
+        } else if let result = shown?.result {
             Badge(text: result.keptOriginal
                       ? "Already optimized"
                       : "\(Format.size(result.outputBytes))  -\(Format.percent(result.savedFraction))",

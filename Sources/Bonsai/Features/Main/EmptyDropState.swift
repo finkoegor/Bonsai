@@ -36,7 +36,7 @@ struct EmptyDropState: View {
 
             HStack(spacing: 5) {
                 Icon(name: "check-circle", size: 11)
-                Text("100% local. Files never leave your Mac")
+                Text("100% local, files never leave your Mac")
             }
             .font(.system(size: 11))
             .foregroundStyle(theme.text3)

@@ -61,8 +61,8 @@ struct BonsaiApp: App {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.pdf]
         panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
-        panel.message = "Choose PDF files to compress"
+        panel.canChooseDirectories = true
+        panel.message = "Choose PDF files or folders to compress"
         if panel.runModal() == .OK {
             state.addURLs(panel.urls)
         }

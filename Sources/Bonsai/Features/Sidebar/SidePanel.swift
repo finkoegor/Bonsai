@@ -24,7 +24,7 @@ struct SidePanel: View {
             presetNote
                 .padding(.top, 14)
 
-            if !Compressor.isAvailable {
+            if !state.toolsAvailable {
                 toolsHint
                     .padding(.top, 8)
             }
@@ -87,7 +87,7 @@ struct SidePanel: View {
                 .foregroundStyle(theme.warning)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 5) {
-                Text("Bonsai compresses with two free command line tools. Install them with Homebrew, then reopen the app:")
+                Text("Bonsai compresses with two free command line tools. Install them with Homebrew:")
                     .font(.system(size: 11))
                     .foregroundStyle(theme.text2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -100,7 +100,7 @@ struct SidePanel: View {
                         .foregroundStyle(theme.accent)
                 }
                 .buttonStyle(.plain)
-                .help("Copy the command, paste it in Terminal and reopen Bonsai")
+                .help("Copy the command and paste it in Terminal")
             }
         }
         .padding(11)
@@ -117,8 +117,8 @@ struct SidePanel: View {
 
     @ViewBuilder
     private var bottomSection: some View {
-        if let run = state.lastRun {
-            SuccessCard(run: run)
+        if let summary = state.summary {
+            SuccessCard(summary: summary)
                 .transition(.scale(scale: 0.92).combined(with: .opacity))
         } else {
             VStack(alignment: .leading, spacing: 14) {
@@ -126,9 +126,17 @@ struct SidePanel: View {
                     saveModePicker
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
-                if state.isCompressing && state.runTotal > 1 {
-                    progressBar
-                        .transition(.opacity)
+                if state.isCompressing {
+                    HStack(spacing: 12) {
+                        progressBar
+                        Button(state.isStopping ? "Stopping…" : "Stop") {
+                            state.stop()
+                        }
+                        .buttonStyle(QuietButtonStyle())
+                        .disabled(state.isStopping)
+                        .help("Files already saved stay saved")
+                    }
+                    .transition(.opacity)
                 }
                 compressButton
             }
@@ -164,7 +172,7 @@ struct SidePanel: View {
     }
 
     private var progressBar: some View {
-        let fraction = Double(state.completedCount) / Double(max(1, state.runTotal))
+        let fraction = state.runProgress
         return GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 Capsule().fill(theme.wellBG)
@@ -197,6 +205,7 @@ struct SidePanel: View {
             }
         }
         .buttonStyle(PrimaryButtonStyle())
+        .keyboardShortcut(.defaultAction)
         .disabled(!state.canCompress)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: state.isCompressing)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: state.completedCount)

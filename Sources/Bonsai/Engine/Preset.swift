@@ -14,6 +14,15 @@ enum Preset: String, CaseIterable, Identifiable, Codable {
         }
     }
 
+    /// The title in one word, for tight places.
+    var shortTitle: String {
+        switch self {
+        case .low: "Low"
+        case .recommended: "Recommended"
+        case .extreme: "Extreme"
+        }
+    }
+
     var subtitle: String {
         switch self {
         case .low: "Highest quality, lighter file"

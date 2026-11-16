@@ -1,7 +1,7 @@
 import Foundation
 
-/// The outcome of one press of the compress button.
-struct RunSummary {
+/// What one preset saved across the files of the list.
+struct ListSummary {
     var files = 0
     var inputBytes: Int64 = 0
     var outputBytes: Int64 = 0

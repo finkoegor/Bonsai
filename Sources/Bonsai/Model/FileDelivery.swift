@@ -36,18 +36,21 @@ enum FileDelivery {
     }
 
     /// Names the copy after the original and the preset, so versions made
-    /// with different presets can sit side by side.
+    /// with different presets can sit side by side. A taken name gets a
+    /// number, also when another file of the batch takes it at this moment.
     private static func copy(_ compressed: URL, nextTo original: URL, in folder: URL?, preset: Preset) throws -> URL {
-        let fileManager = FileManager.default
         let directory = folder ?? original.deletingLastPathComponent()
         let base = "\(original.deletingPathExtension().lastPathComponent)-compressed-\(preset.rawValue)"
-        var destination = directory.appendingPathComponent("\(base).pdf")
-        var counter = 2
-        while fileManager.fileExists(atPath: destination.path) {
-            destination = directory.appendingPathComponent("\(base) \(counter).pdf")
-            counter += 1
+        var counter = 1
+        while true {
+            let name = counter == 1 ? "\(base).pdf" : "\(base) \(counter).pdf"
+            let destination = directory.appendingPathComponent(name)
+            do {
+                try FileManager.default.copyItem(at: compressed, to: destination)
+                return destination
+            } catch let error as CocoaError where error.code == .fileWriteFileExists {
+                counter += 1
+            }
         }
-        try fileManager.copyItem(at: compressed, to: destination)
-        return destination
     }
 }

@@ -11,7 +11,17 @@ struct Toolchain: Sendable {
     static let installCommand = "brew install qpdf mozjpeg"
 
     /// Nil when a tool is missing or qpdf predates JSON updates (qpdf 11).
-    static let shared: Toolchain? = locate()
+    /// The search runs again until it succeeds, so installing the tools
+    /// takes effect without restarting the app.
+    static var shared: Toolchain? {
+        lock.lock()
+        defer { lock.unlock() }
+        if found == nil { found = locate() }
+        return found
+    }
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var found: Toolchain?
 
     private static func locate() -> Toolchain? {
         let fileManager = FileManager.default

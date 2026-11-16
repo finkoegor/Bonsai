@@ -1,8 +1,11 @@
 import PDFKit
 import SwiftUI
 
-/// The original and the compressed page under a draggable divider.
+/// The original and the compressed page under a draggable divider. The
+/// window's title bar carries the file name. A page shows whole, or across
+/// the width of the window with the rest of it reached by scrolling.
 struct ComparisonView: View {
+    @Environment(AppState.self) private var state
     @Environment(\.theme) private var theme
     let item: PDFItem
 
@@ -11,12 +14,20 @@ struct ComparisonView: View {
     @State private var original: NSImage?
     @State private var compressed: NSImage?
     @State private var loading = true
+    /// Nil leaves the choice to the page's shape.
+    @State private var fillsWidth: Bool?
+    @State private var viewport = CGSize.zero
 
-    private var result: CompressionResult? { item.result }
+    private static let inset: CGFloat = 24
+    /// A whole page narrower than this share of the window is too small to
+    /// judge, so it starts out across the width.
+    private static let narrowestWholePage = 1.0 / 3
+
+    private var version: SavedVersion? { item.shownVersion(for: state.preset) }
+    private var result: CompressionResult? { version?.result }
 
     var body: some View {
         VStack(spacing: 0) {
-            header
             comparison
             footer
         }
@@ -27,23 +38,7 @@ struct ComparisonView: View {
         .task(id: "\(page)-\(result?.outputURL.lastPathComponent ?? "")") { await render() }
     }
 
-    // MARK: Header
-
-    private var header: some View {
-        HStack(spacing: 12) {
-            Text(item.name)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(theme.text)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer()
-            if item.pageCount > 1 { pager }
-        }
-        .padding(.horizontal, Layout.inset)
-        .padding(.vertical, 12)
-        .background(theme.surface)
-        .overlay(alignment: .bottom) { Rectangle().fill(theme.border).frame(height: 1) }
-    }
+    // MARK: Pages
 
     private var pager: some View {
         HStack(spacing: 6) {
@@ -53,6 +48,7 @@ struct ComparisonView: View {
                 Image(systemName: "chevron.left").font(.system(size: 10, weight: .bold))
             }
             .buttonStyle(CircleIconButtonStyle(diameter: 24))
+            .keyboardShortcut(.leftArrow, modifiers: [])
             .disabled(page == 0)
             .opacity(page == 0 ? 0.35 : 1)
 
@@ -69,6 +65,7 @@ struct ComparisonView: View {
                 Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
             }
             .buttonStyle(CircleIconButtonStyle(diameter: 24))
+            .keyboardShortcut(.rightArrow, modifiers: [])
             .disabled(page >= item.pageCount - 1)
             .opacity(page >= item.pageCount - 1 ? 0.35 : 1)
         }
@@ -81,13 +78,21 @@ struct ComparisonView: View {
             ZStack {
                 theme.wellBG
                 if let original, let compressed {
+                    let size = pageSize(in: geometry.size)
+                    let area = CGSize(width: geometry.size.width,
+                                      height: max(geometry.size.height, size.height + Self.inset * 2))
                     ZStack {
-                        pageImage(compressed, in: geometry.size)
-                        pageImage(original, in: geometry.size)
-                            .mask(alignment: .leading) {
-                                Rectangle().frame(width: geometry.size.width * fraction)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                        ScrollView(.vertical) {
+                            ZStack {
+                                pageImage(compressed, size: size, in: area)
+                                pageImage(original, size: size, in: area)
+                                    .mask(alignment: .leading) {
+                                        Rectangle().frame(width: area.width * fraction)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
                             }
+                        }
+                        .id(page)
                         divider(in: geometry.size)
                         labels(in: geometry.size)
                     }
@@ -105,17 +110,56 @@ struct ComparisonView: View {
                         }
                     }
             )
+            .onAppear { viewport = geometry.size }
+            .onChange(of: geometry.size) { _, size in viewport = size }
         }
         .animation(.easeOut(duration: 0.25), value: original != nil)
     }
 
-    private func pageImage(_ image: NSImage, in size: CGSize) -> some View {
+    private func pageImage(_ image: NSImage, size: CGSize, in area: CGSize) -> some View {
         Image(nsImage: image)
             .resizable()
-            .scaledToFit()
-            .padding(24)
             .frame(width: size.width, height: size.height)
             .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
+            .frame(width: area.width, height: area.height)
+    }
+
+    // MARK: Fit
+
+    /// The widths the page can take in `viewport`: shown whole, and across.
+    private func pageWidths(in viewport: CGSize) -> (whole: CGFloat, across: CGFloat)? {
+        guard let image = compressed ?? original, image.size.width > 0, image.size.height > 0 else { return nil }
+        let width = max(1, viewport.width - Self.inset * 2)
+        let height = max(1, viewport.height - Self.inset * 2)
+        return (min(width, height * image.size.width / image.size.height), width)
+    }
+
+    private func goesAcross(_ widths: (whole: CGFloat, across: CGFloat)) -> Bool {
+        fillsWidth ?? (widths.whole < widths.across * Self.narrowestWholePage)
+    }
+
+    private func pageSize(in viewport: CGSize) -> CGSize {
+        guard let widths = pageWidths(in: viewport), let image = compressed ?? original else { return .zero }
+        let width = goesAcross(widths) ? widths.across : widths.whole
+        return CGSize(width: width, height: width * image.size.height / image.size.width)
+    }
+
+    /// Present only when the whole page leaves room at its sides, so the
+    /// two fits differ.
+    @ViewBuilder
+    private var fitToggle: some View {
+        if let widths = pageWidths(in: viewport), widths.whole < widths.across * 0.95 {
+            let across = goesAcross(widths)
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { fillsWidth = !across }
+            } label: {
+                Image(systemName: across ? "arrow.down.right.and.arrow.up.left"
+                                         : "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 10, weight: .bold))
+            }
+            .buttonStyle(CircleIconButtonStyle(diameter: 24))
+            .help(across ? "Show the whole page" : "Fit the page to the width")
+        }
     }
 
     private func divider(in size: CGSize) -> some View {
@@ -165,7 +209,8 @@ struct ComparisonView: View {
             .padding(.vertical, 5)
             .background(
                 Capsule().fill(accent ? AnyShapeStyle(theme.accentGradient)
-                                      : AnyShapeStyle(.ultraThinMaterial))
+                                      : AnyShapeStyle(theme.surface.opacity(0.94)))
+                    .shadow(color: .black.opacity(0.12), radius: 5, y: 2)
             )
             .opacity(visible ? 1 : 0)
             .animation(.easeOut(duration: 0.2), value: visible)
@@ -174,22 +219,31 @@ struct ComparisonView: View {
     // MARK: Footer
 
     private var footer: some View {
-        HStack {
-            Text(item.resultPreset?.title ?? "")
+        HStack(spacing: 12) {
+            Text(version?.preset.title ?? "")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(theme.accent)
-            Spacer()
-            if let result {
-                Text(result.keptOriginal
-                     ? "No meaningful savings, the original is kept as-is"
-                     : "Saved \(Format.size(result.savedBytes)) (-\(Format.percent(result.savedFraction)))")
-                    .font(.system(size: 12, weight: .medium))
-                    .monospacedDigit()
-                    .foregroundStyle(result.keptOriginal ? theme.text2 : theme.success)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 14) {
+                if item.pageCount > 1 { pager }
+                fitToggle
             }
+            Group {
+                if let result {
+                    Text(result.keptOriginal
+                         ? "Already optimized, the original is kept"
+                         : "Saved \(Format.size(result.savedBytes)) (-\(Format.percent(result.savedFraction)))")
+                        .font(.system(size: 12, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(result.keptOriginal ? theme.text2 : theme.success)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(.horizontal, Layout.inset)
-        .padding(.vertical, 13)
+        .padding(.vertical, 9)
         .background(theme.surface)
         .overlay(alignment: .top) { Rectangle().fill(theme.border).frame(height: 1) }
     }
@@ -207,7 +261,9 @@ struct ComparisonView: View {
             func render(_ url: URL?) -> NSImage? {
                 guard let url, let document = PDFDocument(url: url), let page = document.page(at: index) else { return nil }
                 let bounds = page.bounds(for: .cropBox)
-                let scale = min(4, 2400 / max(bounds.width, 1))
+                // Sharp across a wide window, within a bitmap of 24 megapixels.
+                let scale = min(4, 2400 / max(bounds.width, 1),
+                                (24_000_000 / max(bounds.width * bounds.height, 1)).squareRoot())
                 return page.thumbnail(of: CGSize(width: bounds.width * scale, height: bounds.height * scale), for: .cropBox)
             }
             return (render(before), render(after))

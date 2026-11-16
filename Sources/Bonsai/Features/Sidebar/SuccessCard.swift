@@ -3,19 +3,19 @@ import SwiftUI
 struct SuccessCard: View {
     @Environment(AppState.self) private var state
     @Environment(\.theme) private var theme
-    let run: RunSummary
+    let summary: ListSummary
 
     var body: some View {
         VStack(spacing: 12) {
             AnimatedCheck(color: theme.success, size: 46)
-            Text(run.savedBytes > 0
-                 ? "Saved \(Format.size(run.savedBytes)) (-\(Format.percent(run.savedFraction)))"
+            Text(summary.savedBytes > 0
+                 ? "Saved \(Format.size(summary.savedBytes)) (-\(Format.percent(summary.savedFraction)))"
                  : "Already optimized")
                 .font(.system(size: 16, weight: .bold))
                 .kerning(-0.2)
                 .monospacedDigit()
                 .foregroundStyle(theme.text)
-            Text("\(run.files) \(run.files == 1 ? "file" : "files"), \(Format.size(run.inputBytes)) to \(Format.size(run.outputBytes))")
+            Text("\(summary.files) \(summary.files == 1 ? "file" : "files"), \(Format.size(summary.inputBytes)) to \(Format.size(summary.outputBytes))")
                 .font(.system(size: 12))
                 .monospacedDigit()
                 .foregroundStyle(theme.text2)
