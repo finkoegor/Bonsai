@@ -17,7 +17,8 @@ struct DocumentUpdate {
         entries[number] = .object(JSONObject([("stream", .object(JSONObject([("dict", .object(dictionary))])))]))
     }
 
-    /// Replaces a stream with the bytes in `data`, encoded as `dictionary` says.
+    /// Replaces a stream with the bytes in `data`, encoded as `dictionary`
+    /// says. A number above the highest in the file adds a new object.
     mutating func replaceStream(_ number: Int, dictionary: JSONObject, data: URL) {
         let stream = JSONObject([("dict", .object(dictionary)), ("datafile", .string(data.path))])
         entries[number] = .object(JSONObject([("stream", .object(stream))]))

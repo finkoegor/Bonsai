@@ -1,15 +1,29 @@
 import Foundation
+import zlib
 
 /// zlib streams as the FlateDecode filter expects them.
 enum Flate {
-    static func compress(_ data: Data) -> Data? {
-        guard let deflated = try? (data as NSData).compressed(using: .zlib) as Data else { return nil }
-        var stream = Data([0x78, 0x9C])
-        stream.append(deflated)
-        let checksum = adler32(data)
-        stream.append(contentsOf: [UInt8(checksum >> 24), UInt8(checksum >> 16 & 0xFF),
-                                   UInt8(checksum >> 8 & 0xFF), UInt8(checksum & 0xFF)])
-        return stream
+    /// `level` is zlib's 1 to 9. Text compresses best at 9; rows of
+    /// filtered pixels gain next to nothing past 7 and take longer.
+    static func compress(_ data: Data, level: Int32 = 9) -> Data? {
+        guard data.count < Int(UInt32.max) else { return nil }
+        var stream = z_stream()
+        guard deflateInit2_(&stream, level, Z_DEFLATED, 15, 9, Z_DEFAULT_STRATEGY, ZLIB_VERSION,
+                            Int32(MemoryLayout<z_stream>.size)) == Z_OK else { return nil }
+        defer { deflateEnd(&stream) }
+        var output = Data(count: Int(deflateBound(&stream, uLong(data.count))))
+        let status: Int32 = data.withUnsafeBytes { input in
+            output.withUnsafeMutableBytes { buffer in
+                stream.next_in = UnsafeMutablePointer(mutating: input.bindMemory(to: Bytef.self).baseAddress)
+                stream.avail_in = uInt(input.count)
+                stream.next_out = buffer.bindMemory(to: Bytef.self).baseAddress
+                stream.avail_out = uInt(buffer.count)
+                return deflate(&stream, Z_FINISH)
+            }
+        }
+        guard status == Z_STREAM_END else { return nil }
+        output.count = Int(stream.total_out)
+        return output
     }
 
     static func decompress(_ stream: Data) -> Data? {
@@ -66,7 +80,7 @@ enum Flate {
                 for i in 0..<rowLength { filtered[target + 1 + i] = best[i] }
             }
         }
-        return compress(Data(filtered))
+        return compress(Data(filtered), level: 7)
     }
 
     private static func paeth(_ left: Int, _ up: Int, _ upLeft: Int) -> Int {
@@ -74,25 +88,5 @@ enum Flate {
         let toLeft = abs(estimate - left), toUp = abs(estimate - up), toUpLeft = abs(estimate - upLeft)
         if toLeft <= toUp && toLeft <= toUpLeft { return left }
         return toUp <= toUpLeft ? up : upLeft
-    }
-
-    private static func adler32(_ data: Data) -> UInt32 {
-        var a: UInt32 = 1
-        var b: UInt32 = 0
-        data.withUnsafeBytes { buffer in
-            var index = 0
-            let bytes = buffer.bindMemory(to: UInt8.self)
-            while index < bytes.count {
-                let end = min(index + 5552, bytes.count)
-                while index < end {
-                    a &+= UInt32(bytes[index])
-                    b &+= a
-                    index += 1
-                }
-                a %= 65521
-                b %= 65521
-            }
-        }
-        return b << 16 | a
     }
 }

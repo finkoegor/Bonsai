@@ -12,30 +12,42 @@ struct VisualSafetyNet {
     private static let largestAcceptedDistance = 24.0
 
     /// Returns false when the candidate cannot be trusted even after repair.
-    func confirm(_ candidate: URL, original document: PDFDocument, at originalURL: URL,
-                 workspace: URL) -> Bool {
-        guard let compressed = PDFDocument(url: candidate),
-              let broken = brokenPages(of: compressed, against: document) else { return false }
+    func confirm(_ candidate: URL, original: URL, pageCount: Int, workspace: URL) -> Bool {
+        guard let broken = brokenPages(of: candidate, against: original, pageCount: pageCount) else { return false }
         guard !broken.isEmpty else { return true }
-        guard broken.count < document.pageCount,
-              splice(broken, from: originalURL, into: candidate, pageCount: document.pageCount,
-                     workspace: workspace),
-              let repaired = PDFDocument(url: candidate),
-              let remaining = brokenPages(of: repaired, against: document) else { return false }
+        guard broken.count < pageCount,
+              splice(broken, from: original, into: candidate, pageCount: pageCount, workspace: workspace),
+              let remaining = brokenPages(of: candidate, against: original, pageCount: pageCount)
+        else { return false }
         return remaining.isEmpty
     }
 
-    private func brokenPages(of candidate: PDFDocument, against original: PDFDocument) -> Set<Int>? {
-        guard candidate.pageCount == original.pageCount else { return nil }
+    /// Pages are rendered on several threads, each with its own copies of
+    /// the two documents, since a PDFDocument must stay on one thread.
+    private func brokenPages(of candidate: URL, against original: URL, pageCount: Int) -> Set<Int>? {
+        let workers = max(1, min(pageCount, ProcessInfo.processInfo.activeProcessorCount))
+        let lock = NSLock()
         var broken: Set<Int> = []
-        for index in 0..<original.pageCount {
-            guard let before = original.page(at: index).flatMap({ PageSignature($0) }) else { continue }
-            let after = candidate.page(at: index).flatMap { PageSignature($0) }
-            if after.map({ before.distance(to: $0) > Self.largestAcceptedDistance }) ?? true {
-                broken.insert(index)
+        var failed = false
+        DispatchQueue.concurrentPerform(iterations: workers) { worker in
+            guard let before = PDFDocument(url: original), let after = PDFDocument(url: candidate),
+                  before.pageCount == pageCount, after.pageCount == pageCount else {
+                lock.lock()
+                failed = true
+                lock.unlock()
+                return
+            }
+            for index in stride(from: worker, to: pageCount, by: workers) {
+                guard let reference = before.page(at: index).flatMap({ PageSignature($0) }) else { continue }
+                let rendered = after.page(at: index).flatMap { PageSignature($0) }
+                if rendered.map({ reference.distance(to: $0) > Self.largestAcceptedDistance }) ?? true {
+                    lock.lock()
+                    broken.insert(index)
+                    lock.unlock()
+                }
             }
         }
-        return broken
+        return failed ? nil : broken
     }
 
     /// `qpdf candidate --pages candidate 1-3 original 4 candidate 5-9 -- out`

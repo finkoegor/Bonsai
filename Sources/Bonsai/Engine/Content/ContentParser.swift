@@ -2,8 +2,10 @@ import CoreGraphics
 import Foundation
 
 /// Tokenizes a content stream and keeps the operators listed in
-/// `ContentOperation`. Strings, arrays, dictionaries and inline image data
-/// are skipped without being interpreted.
+/// `ContentOperation`. Paths are reduced to their bounds: control points
+/// enclose their curve, so the bounds never come out too small. Strings,
+/// arrays, dictionaries and inline image data are skipped without being
+/// interpreted.
 struct ContentParser {
     struct Result: Sendable {
         let operations: [ContentOperation]
@@ -24,6 +26,11 @@ struct ContentParser {
     private var operands: [Operand] = []
     private var operations: [ContentOperation] = []
     private var isComplete = true
+    /// Bounds of the path under construction, nil while it has no points.
+    private var pathBounds: CGRect?
+    /// False once a path operator came with operands that could not be read.
+    private var pathIsMeasured = true
+    private var clipIsPending = false
 
     static func parse(_ data: Data) -> Result {
         var parser = ContentParser(bytes: [UInt8](data))
@@ -112,11 +119,82 @@ struct ContentParser {
             if case .name(let name)? = operands.last { operations.append(.paint(name)) }
         case "gs":
             if case .name(let name)? = operands.last { operations.append(.applyState(name)) }
+        case "m", "l":
+            extendPath(points: 1)
+        case "v", "y":
+            extendPath(points: 2)
+        case "c":
+            extendPath(points: 3)
+        case "re":
+            if let numbers = trailingNumbers(4) {
+                include(CGPoint(x: numbers[0], y: numbers[1]))
+                include(CGPoint(x: numbers[0] + numbers[2], y: numbers[1] + numbers[3]))
+            } else {
+                pathIsMeasured = false
+            }
+        case "W", "W*":
+            clipIsPending = true
+        case "n":
+            finishPath(painted: false, measured: true)
+        case "f", "F", "f*":
+            finishPath(painted: true, measured: true)
+        case "S", "s", "B", "B*", "b", "b*":
+            finishPath(painted: true, measured: false)
+        case "sh", "Tj", "TJ", "'", "\"":
+            operations.append(.paintAnywhere)
         case "BI":
             skipInlineImage()
+            operations.append(.fill(CGRect(x: 0, y: 0, width: 1, height: 1)))
         default:
             break
         }
+    }
+
+    // MARK: Paths
+
+    private func trailingNumbers(_ count: Int) -> [CGFloat]? {
+        guard operands.count >= count else { return nil }
+        var numbers: [CGFloat] = []
+        numbers.reserveCapacity(count)
+        for operand in operands.suffix(count) {
+            guard case .number(let value) = operand else { return nil }
+            numbers.append(CGFloat(value))
+        }
+        return numbers
+    }
+
+    private mutating func extendPath(points: Int) {
+        guard let numbers = trailingNumbers(points * 2) else {
+            pathIsMeasured = false
+            return
+        }
+        for index in 0..<points {
+            include(CGPoint(x: numbers[index * 2], y: numbers[index * 2 + 1]))
+        }
+    }
+
+    private mutating func include(_ point: CGPoint) {
+        let spot = CGRect(origin: point, size: .zero)
+        pathBounds = pathBounds.map { $0.union(spot) } ?? spot
+    }
+
+    /// Ends the current path. A pending clip takes effect after the path is
+    /// painted, as the operators `W n` and `W f` prescribe.
+    private mutating func finishPath(painted: Bool, measured: Bool) {
+        let bounds = pathIsMeasured ? pathBounds : nil
+        if painted {
+            if measured, pathIsMeasured {
+                if let bounds { operations.append(.fill(bounds)) }
+            } else {
+                operations.append(.paintAnywhere)
+            }
+        }
+        if clipIsPending, let bounds {
+            operations.append(.clip(bounds))
+        }
+        pathBounds = nil
+        pathIsMeasured = true
+        clipIsPending = false
     }
 
     // MARK: Skipping

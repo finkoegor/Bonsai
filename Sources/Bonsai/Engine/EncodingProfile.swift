@@ -1,13 +1,18 @@
+import CoreGraphics
 import Foundation
 
 /// How far a preset may go with each kind of image. JPEG qualities use the
 /// libjpeg 0 to 100 scale.
 struct EncodingProfile: Sendable {
-    /// Images denser than this, measured at the largest size they are drawn
-    /// on any page, are downsampled to it.
-    let targetDensity: Double
-    /// The density the preset promises to look right at: full screen on a
-    /// Retina display is about 130 to 190 pixels per inch of page.
+    /// The screen, in pixels, a page fitted to it must still look sharp on.
+    /// Images keep the density that screen shows the page at: a wide slide
+    /// needs fewer pixels per inch than a small sheet.
+    let screen: CGSize
+    /// Bounds for that density, in pixels per inch of page.
+    let densities: ClosedRange<Double>
+    /// The density pages are assumed to be looked at when artifacts are
+    /// judged: full screen on a Retina display is about 130 to 190 pixels
+    /// per inch of page.
     let viewingDensity: Double
     /// The lowest `StructuralSimilarity.mean` a re-encoded image may reach
     /// against its reference.
@@ -29,15 +34,26 @@ struct EncodingProfile: Sendable {
     /// The largest alpha error a JPEG mask may show at any pixel, out of 255.
     let maskTolerance: Int
 
+    /// The density images are kept at on a page of the given format. Images
+    /// drawn denser than this are downsampled to it.
+    func density(on page: PageFormat) -> Double {
+        let fitted = min(Double(screen.width) * 72 / max(page.width, 1),
+                         Double(screen.height) * 72 / max(page.height, 1))
+        return min(max(fitted, densities.lowerBound), densities.upperBound)
+    }
+
     /// The thresholds hold for an image shown at its own resolution. An image
     /// drawn at a lower density than `viewingDensity` is magnified on screen
-    /// by `magnification`, and its artifacts grow in both directions, so the
-    /// allowed loss shrinks with the square of the magnification.
+    /// by `magnification`. Its artifacts grow in both directions, so the
+    /// allowed loss of structure shrinks with the square of the
+    /// magnification, and the allowed brightness steps, which only get
+    /// wider, with the magnification itself.
     func accepts(_ comparison: StructuralSimilarity, magnification: Double) -> Bool {
-        let factor = pow(max(1, magnification), 2)
+        let stretch = max(1, magnification)
+        let factor = stretch * stretch
         return comparison.mean >= 1 - (1 - similarity) / factor
             && comparison.worst >= 1 - (1 - worstSimilarity) / factor
-            && comparison.brightnessShift <= brightnessTolerance / factor
+            && comparison.brightnessShift <= brightnessTolerance / stretch
     }
 
     /// Downsampling that keeps more than this share of the linear resolution

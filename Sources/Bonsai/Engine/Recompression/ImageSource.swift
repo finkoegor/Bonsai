@@ -17,7 +17,7 @@ struct ImageSource: Sendable {
     }
 
     let number: Int
-    /// The dictionary exactly as stored in the file.
+    /// The dictionary as stored in the file, less a soft mask taken away.
     let dictionary: JSONObject
     let width: Int
     let height: Int
@@ -30,12 +30,29 @@ struct ImageSource: Sendable {
     /// True for soft masks with /Matte: their image is premultiplied, so
     /// neither may change shape or pick up lossy error.
     let hasMatte: Bool
+    /// True when a /Decode array remaps the samples.
+    let hasDecode: Bool
+
+    /// True for a soft mask whose samples are opacity as stored: 0 hides a
+    /// pixel, 255 shows it in full.
+    var isPlainAlpha: Bool {
+        channels == 1 && !hasMatte && !hasDecode
+    }
 
     var channels: Int? {
         switch storage {
         case .jpeg(let header, _): header.components
         case .samples(let bytesPerPixel, let model): model == .other ? nil : bytesPerPixel
         }
+    }
+
+    /// The same image with its soft mask taken away.
+    func withoutSoftMask() -> ImageSource {
+        var stripped = dictionary
+        stripped["/SMask"] = nil
+        return ImageSource(number: number, dictionary: stripped, width: width, height: height,
+                           encodedLength: encodedLength, data: data, storage: storage,
+                           softMask: nil, hasMatte: hasMatte, hasDecode: hasDecode)
     }
 
     var isResampleable: Bool {

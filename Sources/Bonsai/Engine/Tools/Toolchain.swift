@@ -1,11 +1,12 @@
 import Foundation
 
 /// The Homebrew programs the engine depends on: qpdf rewrites the PDF
-/// container, mozjpeg encodes and decodes JPEG.
+/// container, mozjpeg encodes, decodes and crops JPEG.
 struct Toolchain: Sendable {
     let qpdf: ExternalTool
     let jpegEncoder: ExternalTool
     let jpegDecoder: ExternalTool
+    let jpegTransformer: ExternalTool
 
     static let installCommand = "brew install qpdf mozjpeg"
 
@@ -21,9 +22,10 @@ struct Toolchain: Sendable {
             .first { fileManager.isExecutableFile(atPath: $0.path) }
         let mozjpeg = prefixes
             .map { URL(fileURLWithPath: "\($0)/opt/mozjpeg/bin") }
-            .first {
-                fileManager.isExecutableFile(atPath: $0.appendingPathComponent("cjpeg").path)
-                    && fileManager.isExecutableFile(atPath: $0.appendingPathComponent("djpeg").path)
+            .first { directory in
+                ["cjpeg", "djpeg", "jpegtran"].allSatisfy {
+                    fileManager.isExecutableFile(atPath: directory.appendingPathComponent($0).path)
+                }
             }
         guard let qpdf, let mozjpeg else { return nil }
 
@@ -35,6 +37,7 @@ struct Toolchain: Sendable {
 
         return Toolchain(qpdf: tool,
                          jpegEncoder: ExternalTool(url: mozjpeg.appendingPathComponent("cjpeg")),
-                         jpegDecoder: ExternalTool(url: mozjpeg.appendingPathComponent("djpeg")))
+                         jpegDecoder: ExternalTool(url: mozjpeg.appendingPathComponent("djpeg")),
+                         jpegTransformer: ExternalTool(url: mozjpeg.appendingPathComponent("jpegtran")))
     }
 }

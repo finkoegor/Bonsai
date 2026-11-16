@@ -9,6 +9,7 @@ struct JPEGHeader: Sendable {
     /// and one or three components: the kinds every PDF reader decodes and
     /// mozjpeg can re-encode.
     let isReencodable: Bool
+    let isProgressive: Bool
     /// Nil for grayscale or unusual layouts.
     let chroma: ChromaSubsampling?
 
@@ -22,6 +23,7 @@ struct JPEGHeader: Sendable {
         components = Int(bytes[segment + 5])
         isReencodable = precision == 8 && [0xC0, 0xC1, 0xC2].contains(frame.marker)
             && (components == 1 || components == 3)
+        isProgressive = frame.marker == 0xC2
         if components == 3 {
             let factors = (0..<3).map { bytes[segment + 6 + $0 * 3 + 1] }
             switch (factors[0], factors[1], factors[2]) {

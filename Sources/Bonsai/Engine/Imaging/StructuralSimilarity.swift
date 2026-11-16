@@ -4,6 +4,10 @@ import Foundation
 /// pixels off the JPEG block grid, so each one straddles block borders and
 /// sees blocking, and each one is scored on its own, so damage confined to
 /// small text or a logo is not averaged away by large smooth areas.
+///
+/// With an alpha channel, both images are compared the way they show: each
+/// pixel is scaled by its opacity, which is what reaches the screen over any
+/// backdrop. Errors in faint shadows count for as little as they are seen.
 struct StructuralSimilarity {
     /// SSIM averaged over the windows. 1 means identical.
     let mean: Double
@@ -15,8 +19,11 @@ struct StructuralSimilarity {
     /// yet a gradient made of such windows shows visible steps.
     let brightnessShift: Double
 
-    /// `alpha`, when given, has the size of the images; windows that are
-    /// mostly transparent are not scored.
+    /// Windows less visible than this, as average opacity out of 255, are
+    /// not scored.
+    private static let leastScoredOpacity = 16
+
+    /// `alpha`, when given, has the size of the images.
     init(_ reference: PixelBuffer, _ candidate: PixelBuffer, alpha: PixelBuffer? = nil) {
         guard reference.width == candidate.width, reference.height == candidate.height,
               reference.channels == candidate.channels else {
@@ -52,8 +59,10 @@ struct StructuralSimilarity {
                             for y in top..<(top + 8) {
                                 for x in left..<(left + 8) {
                                     let pixel = y * width + x
-                                    visibility += opacity.map { Int($0[pixel]) } ?? 255
-                                    let va = luma(a, pixel), vb = luma(b, pixel)
+                                    let shown = opacity.map { Int($0[pixel]) } ?? 255
+                                    visibility += shown
+                                    let weight = Double(shown) / 255
+                                    let va = luma(a, pixel) * weight, vb = luma(b, pixel) * weight
                                     sumA += va
                                     sumB += vb
                                     sumAA += va * va
@@ -61,7 +70,7 @@ struct StructuralSimilarity {
                                     sumAB += va * vb
                                 }
                             }
-                            guard visibility >= 128 * 64 else { continue }
+                            guard visibility >= Self.leastScoredOpacity * 64 else { continue }
                             let meanA = sumA / 64, meanB = sumB / 64
                             let varianceA = sumAA / 64 - meanA * meanA
                             let varianceB = sumBB / 64 - meanB * meanB

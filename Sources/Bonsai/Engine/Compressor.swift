@@ -47,7 +47,8 @@ enum Compressor {
         if optimizer.optimize(url, into: candidate),
            let output = PDFDocument(url: candidate), !output.isLocked,
            output.pageCount == document.pageCount,
-           VisualSafetyNet(qpdf: tools.qpdf).confirm(candidate, original: document, at: url, workspace: workspace) {
+           VisualSafetyNet(qpdf: tools.qpdf).confirm(candidate, original: url, pageCount: document.pageCount,
+                                                     workspace: workspace) {
             let outputBytes = fileSize(candidate)
             if outputBytes > 0, Double(outputBytes) < Double(inputBytes) * requiredRatio {
                 return CompressionResult(outputURL: candidate, inputBytes: inputBytes,
