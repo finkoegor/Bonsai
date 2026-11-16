@@ -4,6 +4,15 @@
     <title>Bonsai</title>
     <language>en</language>
     <item>
+      <title>1.3.0</title>
+      <pubDate>Mon, 16 Nov 2026 18:50:13 +0900</pubDate>
+      <sparkle:version>1.3.0</sparkle:version>
+      <sparkle:shortVersionString>1.3.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[Recommended now compresses several times faster and makes files close to iLovePDF in size. Gradients stay smooth without bands. Stop works at once, progress moves within a file, each preset keeps its own version, folders can be added and failed files retried.]]></description>
+      <enclosure url="https://github.com/finkoegor/Bonsai/releases/download/v1.3.0/Bonsai-1.3.0.zip" sparkle:edSignature="WCC2LnpbF6gaDtvS5TidVRcbc609RFdwGJ3jh/zuS29U8RjPJN33SJ+V1ZNxs63w1mNE31j3+JMO62Y+hE3uAg==" length="2172658" type="application/octet-stream"/>
+    </item>
+    <item>
       <title>1.2.0</title>
       <pubDate>Sun, 18 Oct 2026 15:56:21 +0800</pubDate>
       <sparkle:version>1.2.0</sparkle:version>
