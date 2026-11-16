@@ -213,7 +213,7 @@ struct ImageRecompressor: Sendable {
         rect.width = max(rect.width, min(JPEGCodec.blockSize, width - rect.x))
         rect.height = max(rect.height, min(JPEGCodec.blockSize, height - rect.y))
 
-        guard Double(rect.area) <= Double(full.area) * Self.largestWorthwhileCrop else { return nil }
+        guard !rect.isEmpty, Double(rect.area) <= Double(full.area) * Self.largestWorthwhileCrop else { return nil }
         return rect
     }
 
