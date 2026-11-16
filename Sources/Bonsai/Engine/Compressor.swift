@@ -31,8 +31,10 @@ enum Compressor {
     }
 
     /// Compresses `url` into a new file inside `workDir`. Takes seconds on
-    /// large documents; call it off the main thread.
-    static func compress(_ url: URL, preset: Preset, workDir: URL? = nil) throws -> CompressionResult {
+    /// large documents; call it off the main thread. A cancelled `monitor`
+    /// ends the work with `CompressionError.cancelled`.
+    static func compress(_ url: URL, preset: Preset, workDir: URL? = nil,
+                         monitor: CompressionMonitor? = nil) throws -> CompressionResult {
         let inputBytes = fileSize(url)
         let document = try validate(url)
         guard let tools = Toolchain.shared else { throw CompressionError.toolsMissing }
@@ -43,12 +45,18 @@ enum Compressor {
         defer { try? FileManager.default.removeItem(at: workspace) }
         let candidate = directory.appendingPathComponent("\(UUID().uuidString).pdf")
 
-        let optimizer = DocumentOptimizer(tools: tools, profile: preset.profile, workspace: workspace)
-        if optimizer.optimize(url, into: candidate),
-           let output = PDFDocument(url: candidate), !output.isLocked,
-           output.pageCount == document.pageCount,
-           VisualSafetyNet(qpdf: tools.qpdf).confirm(candidate, original: url, pageCount: document.pageCount,
-                                                     workspace: workspace) {
+        let optimizer = DocumentOptimizer(tools: tools, profile: preset.profile, workspace: workspace,
+                                          monitor: monitor)
+        let optimized = optimizer.optimize(url, into: candidate)
+        let confirmed = optimized && monitor?.isCancelled != true
+            && PDFDocument(url: candidate).map { !$0.isLocked && $0.pageCount == document.pageCount } == true
+            && VisualSafetyNet(qpdf: tools.qpdf).confirm(candidate, original: url, pageCount: document.pageCount,
+                                                         workspace: workspace)
+        if monitor?.isCancelled == true {
+            try? FileManager.default.removeItem(at: candidate)
+            throw CompressionError.cancelled
+        }
+        if confirmed {
             let outputBytes = fileSize(candidate)
             if outputBytes > 0, Double(outputBytes) < Double(inputBytes) * requiredRatio {
                 return CompressionResult(outputURL: candidate, inputBytes: inputBytes,

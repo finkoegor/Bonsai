@@ -6,6 +6,7 @@ enum CompressionError: LocalizedError {
     case emptyDocument
     case toolsMissing
     case writeFailed
+    case cancelled
 
     var errorDescription: String? {
         switch self {
@@ -14,6 +15,7 @@ enum CompressionError: LocalizedError {
         case .emptyDocument: "Document has no pages"
         case .toolsMissing: "Needs qpdf and mozjpeg"
         case .writeFailed: "Compression failed"
+        case .cancelled: "Stopped"
         }
     }
 }

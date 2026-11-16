@@ -11,6 +11,13 @@ struct DocumentOptimizer {
     let profile: EncodingProfile
     /// An empty directory the optimizer may fill with temporary files.
     let workspace: URL
+    var monitor: CompressionMonitor?
+
+    /// Where the stages end on the way from 0 to 1. What is left after
+    /// writing goes to checking the result.
+    private static let afterReading = 0.1
+    private static let afterImages = 0.8
+    private static let afterWriting = 0.9
 
     func optimize(_ source: URL, into output: URL) -> Bool {
         let streams = workspace.appendingPathComponent("streams", isDirectory: true)
@@ -33,8 +40,9 @@ struct DocumentOptimizer {
                     source.path, contentsFile.path]),
               let structure = try? JSONParser.parse(Data(contentsOf: structureFile)),
               let contents = try? JSONParser.parse(Data(contentsOf: contentsFile)),
-              let store = try? PDFObjectStore(json: structure) else { return false }
+              let store = try? PDFObjectStore(json: structure), monitor?.isCancelled != true else { return false }
         let files = StreamFiles(json: contents)
+        monitor?.report(Self.afterReading)
 
         let duplicates = DuplicateImageFinder(store: store, files: files).duplicates()
         let usage = ImageUsageScanner(store: store, files: files).scan().merging(duplicates)
@@ -42,7 +50,9 @@ struct DocumentOptimizer {
         let codec = JPEGCodec(encoder: tools.jpegEncoder, decoder: tools.jpegDecoder,
                               transformer: tools.jpegTransformer, scratch: scratch)
         let images = ImageRecompressor(catalog: catalog, usage: usage, profile: profile,
-                                       codec: codec, output: encoded).run()
+                                       codec: codec, output: encoded,
+                                       monitor: monitor?.stage(Self.afterReading...Self.afterImages)).run()
+        guard monitor?.isCancelled != true else { return false }
         let settled = Set(duplicates.keys).union(images.replacements.keys).union(images.relocations.keys)
         let repacked = StreamRepacker(store: store, files: files, output: encoded).run(skipping: settled)
 
@@ -93,7 +103,9 @@ struct DocumentOptimizer {
             arguments.append("--linearize")
         }
         arguments.append(output.path)
-        return qpdf(arguments)
+        guard monitor?.isCancelled != true, qpdf(arguments) else { return false }
+        monitor?.report(Self.afterWriting)
+        return true
     }
 
     /// A form XObject that paints `image` into `frame`, a rectangle of the

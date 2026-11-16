@@ -14,6 +14,7 @@ struct ImageRecompressor: Sendable {
     let codec: JPEGCodec
     /// Directory for the new stream contents.
     let output: URL
+    var monitor: CompressionMonitor?
 
     /// How a group changes shape: the part that is kept, then the scale
     /// applied to it.
@@ -45,7 +46,8 @@ struct ImageRecompressor: Sendable {
     func run() -> RecompressedImages {
         let bare = imagesWithIdleMasks()
         var images = ImageRecompressor(catalog: catalog.withoutSoftMasks(of: bare), usage: usage,
-                                       profile: profile, codec: codec, output: output).recompress()
+                                       profile: profile, codec: codec, output: output,
+                                       monitor: monitor).recompress()
         // An image that lost its mask and kept its bytes still needs its
         // dictionary rewritten.
         for number in bare where images.replacements[number] == nil && images.relocations[number] == nil {
@@ -93,12 +95,18 @@ struct ImageRecompressor: Sendable {
         let groups = ImageGroup.groups(in: catalog)
             .map { group in (group, group.members.reduce(0) { $0 + pixelCount(of: $1) }) }
             .sorted { $0.1 > $1.1 }
+        let total = max(1, groups.reduce(0) { $0 + $1.1 })
+        var finished = 0
         for (group, pixels) in groups {
             queue.addOperation {
+                guard monitor?.isCancelled != true else { return }
                 let result = budget.reserving(pixels) { process(group) }
                 lock.lock()
                 images.merge(result)
+                finished += pixels
+                let share = Double(finished) / Double(total)
                 lock.unlock()
+                monitor?.report(share)
             }
         }
         queue.waitUntilAllOperationsAreFinished()
