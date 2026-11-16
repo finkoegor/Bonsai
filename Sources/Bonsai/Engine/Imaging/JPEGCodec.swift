@@ -11,6 +11,32 @@ struct JPEGCodec: Sendable {
     let transformer: ExternalTool
     let scratch: URL
 
+    /// Quantization steps at quality 50, in the 8 by 8 layout cjpeg reads.
+    /// They are flat, as mozjpeg's SSIM tuning has them, except for the
+    /// block average and the two slowest waves, which are kept finer. Those
+    /// three carry gradients: quantized as coarsely as the rest, a soft
+    /// backdrop or a shadow breaks up into bands.
+    private static let quantization: String = {
+        var steps = [Int](repeating: 16, count: 64)
+        steps[0] = 6
+        steps[1] = 8
+        steps[8] = 8
+        let table = stride(from: 0, to: 64, by: 8)
+            .map { steps[$0..<($0 + 8)].map(String.init).joined(separator: " ") }
+            .joined(separator: "\n")
+        return table + "\n\n" + table + "\n"
+    }()
+
+    private var quantizationFile: URL { scratch.appendingPathComponent("quantization.txt") }
+
+    init(encoder: ExternalTool, decoder: ExternalTool, transformer: ExternalTool, scratch: URL) {
+        self.encoder = encoder
+        self.decoder = decoder
+        self.transformer = transformer
+        self.scratch = scratch
+        try? Self.quantization.write(to: quantizationFile, atomically: true, encoding: .utf8)
+    }
+
     func decode(_ jpeg: Data) -> PixelBuffer? {
         let input = temporaryFile("jpg")
         let output = temporaryFile("pnm")
@@ -43,7 +69,8 @@ struct JPEGCodec: Sendable {
     func encode(_ input: Input, quality: Int, chroma: ChromaSubsampling) -> Data? {
         let output = temporaryFile("jpg")
         defer { remove(output) }
-        var arguments = ["-quality", "\(quality)", "-baseline", "-quant-baseline", "-optimize", "-tune-ssim"]
+        var arguments = ["-quality", "\(quality)", "-baseline", "-quant-baseline", "-optimize", "-tune-ssim",
+                         "-qtables", quantizationFile.path, "-qslots", "0,1,1"]
         if input.hasColor {
             arguments += ["-sample", chroma.samplingFactors]
         }
