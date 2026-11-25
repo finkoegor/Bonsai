@@ -210,7 +210,7 @@ function setupNumbers() {
   onScroll(h => {
     const r = section.getBoundingClientRect();
     const p = clamp(-r.top / (r.height - h));
-    show(p < 0.28 ? 0 : p < 0.66 ? 1 : 2);
+    show(p < 0.2 ? 0 : p < 0.6 ? 1 : 2);
   });
 }
 
