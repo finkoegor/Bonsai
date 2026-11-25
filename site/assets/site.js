@@ -176,21 +176,11 @@ function setupNumbers() {
   });
 }
 
-// Accent buttons: colors wander under the fill, sparks rise from the mark.
+// Accent buttons: colors wander under the fill.
 function setupButtons() {
   const pills = [...document.querySelectorAll('.pill')];
   pills.forEach(pill => {
     pill.insertAdjacentHTML('afterbegin', '<span class="pill-colors"><i></i><i></i><i></i><i></i><i></i></span><span class="pill-fill"></span>');
-    const mark = pill.querySelector('.apple');
-    if (!mark) return;
-    let timer;
-    const emit = () => {
-      const p = pill.getBoundingClientRect(), m = mark.getBoundingClientRect();
-      const x = m.left - p.left + m.width / 2, y = m.top - p.top + m.height / 2;
-      sparks(pill, 3, () => ({ x: x + rand(-6, 6), y: y + rand(-7, 5), dx: rand(-11, 11), dy: rand(-16, -7), ms: rand(800, 1100), size: 1.5 }));
-    };
-    pill.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') { emit(); timer = setInterval(emit, 260); } });
-    pill.addEventListener('pointerleave', () => clearInterval(timer));
   });
   const wander = () => pills.forEach(pill => {
     const w = pill.clientWidth / 2, h = pill.clientHeight / 2;

@@ -138,7 +138,6 @@ section { padding: 0 var(--gutter); }
 .pill:hover .pill-colors { transform: scale(.9); }
 .pill:hover::after { opacity: 1; }
 .pill:active { transform: scale(.98); }
-.pill .spark { z-index: 1; }
 .pill.small { height: 40px; padding: 0 18px; font-size: 15px; }
 .pill .apple { width: 19px; height: 19px; fill: currentColor; margin-top: -2px; }
 .bar .pill.small { margin-left: 6px; }
