@@ -233,8 +233,28 @@ function setupFacts() {
   if (!mb) return;
   // 32 dots for 323 MB, 13 stay for 128 MB; the rest go out right to left.
   mb.innerHTML = Array.from({ length: 32 }, (_, i) => `<i class="${i >= 13 ? 'is-gone' : ''}" style="--d:${i >= 13 ? 300 + (31 - i) * 45 : 300}"></i>`).join('');
-  document.querySelector('.art-cores').innerHTML = Array.from({ length: 8 }, (_, i) => `<i style="--d:${[0, 2300, 900, 3100, 1500, 400, 2700, 1900][i]}"></i>`).join('');
-  document.querySelector('.art-engines').innerHTML = Array.from({ length: 7 }, (_, i) => `<i style="--d:${300 + i * 160}"></i>`).join('');
+  // Each row is a core: its dots come on left to right, then the row clears for the next file.
+  const cores = document.querySelector('.art-cores');
+  cores.innerHTML = Array.from({ length: 4 }, () => `<div>${'<i></i>'.repeat(16)}</div>`).join('');
+  const rows = [...cores.children].map(row => [...row.children]);
+  const offsets = [0, 9, 4, 13];
+  const CYCLE = 20; // 16 steps to fill, 4 to hold, of 200 ms each: four seconds a file
+  let step = 0, timer = 0;
+  const tick = () => {
+    rows.forEach((dots, r) => {
+      const at = (step + offsets[r]) % CYCLE;
+      dots.forEach((dot, i) => dot.classList.toggle('is-on', at < 17 ? i < at : at < CYCLE - 1));
+    });
+    step++;
+  };
+  tick();
+  if (!reducedMotion.matches) {
+    new IntersectionObserver(entries => {
+      clearInterval(timer);
+      if (entries[0].isIntersecting) timer = setInterval(tick, 200);
+    }).observe(cores);
+  }
+  document.querySelector('.art-engines').innerHTML = Array.from({ length: 7 }, (_, i) => `<i style="--d:${300 + i * 160}"><b></b><b></b><b></b></i>`).join('');
 }
 
 // Before and after.

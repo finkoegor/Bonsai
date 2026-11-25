@@ -493,20 +493,21 @@ section { padding: 0 var(--gutter); }
 .facts.is-in .art-mb i.is-gone { opacity: .13; }
 .facts.is-in .art-mb i:not(.is-gone) { background: var(--green); }
 
-/* Cores: each fills in about four seconds, out of step with the others. */
-.art-cores i { position: relative; width: 12px; height: 36px; border-radius: 4px; background: var(--plate); overflow: hidden; }
-.art-cores i::after { content: ""; position: absolute; inset: auto 0 0; height: 100%; border-radius: inherit; background: var(--accent); transform: scaleY(0); transform-origin: 50% 100%; }
-.facts.is-in .art-cores i::after { animation: core 4s cubic-bezier(.45, 0, .55, 1) calc(var(--d) * -1ms) infinite; }
-@keyframes core {
-  0% { transform: scaleY(0); opacity: 1; }
-  82% { transform: scaleY(1); opacity: 1; }
-  100% { transform: scaleY(1); opacity: 0; }
-}
+/* Cores: four rows of dots, each row a core working through a file in about
+   four seconds, out of step with the others. */
+.art-cores { flex-direction: column; justify-content: space-between; align-items: flex-start; gap: 0; }
+.art-cores > div { display: flex; gap: 5px; }
+.art-cores i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink); opacity: .13; }
+.art-cores i.is-on { opacity: 1; background: var(--accent); }
+.art-cores i { transition: opacity .25s ease, background-color .25s ease; }
 
 /* Seven engines, seven identical pages, each signed off in turn. */
 .art-engines { gap: 7px; }
 .art-engines i { position: relative; width: 22px; height: 30px; border-radius: 3px; background: var(--raised); box-shadow: inset 0 0 0 1px var(--line); }
-.art-engines i::before { content: ""; position: absolute; left: 4px; right: 4px; top: 6px; height: 9px; border-radius: 1px; background: linear-gradient(var(--ink3) 0 2px, transparent 2px 4px, var(--ink3) 4px 6px, transparent 6px 7px, var(--ink3) 7px 9px); opacity: .7; }
+.art-engines i b { position: absolute; left: 4px; height: 2px; border-radius: 999px; background: var(--ink3); }
+.art-engines i b:nth-child(1) { top: 6px; right: 4px; }
+.art-engines i b:nth-child(2) { top: 10px; right: 4px; }
+.art-engines i b:nth-child(3) { top: 14px; right: 9px; }
 .art-engines i::after { content: ""; position: absolute; right: -4px; bottom: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--green) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M2.6 5.2l1.6 1.6 3.2-3.4' fill='none' stroke='white' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>") center / 10px; transform: scale(0); transition: transform .45s var(--spring); transition-delay: calc(var(--d) * 1ms); }
 .facts.is-in .art-engines i::after { transform: none; }
 
@@ -615,7 +616,6 @@ details p { padding: 0 0 24px; color: var(--ink2); max-width: 680px; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .reveal, .big, .lit .w, .tile *, .dots i, .fact-art i, .fact-art i::after { transition: none !important; }
-  .facts.is-in .art-cores i::after { animation: none; transform: scaleY(.7); }
   .spark { display: none; }
   .roll i { transition: none; }
   .reveal { opacity: 1; transform: none; }
