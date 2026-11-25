@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bonsai: big PDFs, made small</title>
+<meta name="description" content="A free Mac app that makes PDFs several times smaller right on your Mac. Text stays text, images stay sharp, nothing is uploaded">
+<meta name="theme-color" content="#fbfaff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0a10" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<meta property="og:title" content="Bonsai: big PDFs, made small">
+<meta property="og:description" content="A free Mac app that makes PDFs several times smaller right on your Mac. Text stays text, images stay sharp, nothing is uploaded">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Bonsai">
+<meta property="og:image" content="https://trybonsai.vercel.app/assets/og-cover.jpg">
+<meta property="og:url" content="https://trybonsai.vercel.app/">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://trybonsai.vercel.app/assets/og-cover.jpg">
+<link rel="canonical" href="https://trybonsai.vercel.app/">
+<link rel="icon" href="/assets/favicon-64.png" type="image/png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="preload" href="/assets/bonsai.json" as="fetch" crossorigin>
+<link rel="stylesheet" href="/assets/site.css">
+<link rel="stylesheet" href="/assets/demo.css">
+<script>
+  (function () {
+    var dark = window.matchMedia('(prefers-color-scheme: dark)');
+    function apply() { document.documentElement.dataset.theme = dark.matches ? 'dark' : 'light'; }
+    apply();
+    dark.addEventListener('change', apply);
+  })();
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie_light.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js" defer></script>
+<script type="module" src="/assets/site.js"></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Bonsai",
+  "description": "A free Mac app that makes PDFs several times smaller right on your Mac",
+  "operatingSystem": "macOS 14 or later",
+  "applicationCategory": "UtilitiesApplication",
+  "downloadUrl": "https://github.com/finkoegor/Bonsai/releases/latest",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+</head>
+<body>
+
+<header class="top">
+  <nav class="bar">
+    <a class="logo" href="#top" aria-label="Bonsai"><img src="/assets/icon-256.png" alt="" width="30" height="30">Bonsai</a>
+    <div class="links">
+      <a href="#how">How it works</a>
+      <a href="#presets">Presets</a>
+      <a href="#faq">Questions</a>
+    </div>
+    <a class="pill small js-download" href="https://github.com/finkoegor/Bonsai/releases/latest">Download</a>
+  </nav>
+</header>
+
+<main id="top">
+
+  <section class="hero">
+    <div class="tree" id="hero-tree" aria-hidden="true"></div>
+    <h1 class="hero-title">Big PDFs,<br>made small</h1>
+    <p class="lead">Bonsai makes PDFs several times smaller on your own Mac, and they still look like the original</p>
+    <div class="actions">
+      <a class="pill js-download" href="https://github.com/finkoegor/Bonsai/releases/latest">
+        <svg class="apple" viewBox="0 0 17 20" aria-hidden="true"><path d="M14.1 10.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9C3.6 4.8 2 5.8 1 7.4c-1.9 3.3-.5 8.2 1.4 10.9.9 1.3 2 2.8 3.4 2.7 1.4-.1 1.9-.9 3.5-.9s2.1.9 3.5.9c1.5 0 2.4-1.3 3.3-2.7 1-1.5 1.5-3 1.5-3.1-.1 0-2.9-1.1-3-4.3ZM11.5 3c.7-.9 1.2-2.1 1.1-3.3-1 0-2.3.7-3.1 1.6-.7.8-1.3 2-1.1 3.2 1.2.1 2.3-.6 3.1-1.5Z"/></svg>
+        Download for Mac
+      </a>
+      <a class="ghost" href="https://github.com/finkoegor/Bonsai">Source on GitHub</a>
+    </div>
+    <p class="meta">Free and open source, for macOS 14 or later</p>
+    <div class="window-stage">
+      <div class="window-tilt" id="window-tilt">
+        <div class="demo" id="demo"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="statement" id="statement">
+    <p class="lit">Bonsai never uploads anything. Contracts, scans and pitch decks are compressed by your own Mac, even with Wi-Fi off.</p>
+  </section>
+
+  <section class="numbers" id="numbers">
+    <div class="numbers-stage">
+      <p class="numbers-caption">A slide deck exported from Figma</p>
+      <div class="numbers-stack" aria-live="off">
+        <div class="big is-on" data-step="0"><span>31.4<small>MB</small></span></div>
+        <div class="big" data-step="1"><span><span class="js-count">5.9</span><small>MB</small></span></div>
+        <div class="big is-green" data-step="2"><span>-81%</span></div>
+      </div>
+      <p class="numbers-foot">Recommended preset, 48 pages, every page checked against the original</p>
+    </div>
+  </section>
+
+  <section class="compare reveal" id="how">
+    <h2>Can you tell which half<br>is ten times lighter?</h2>
+    <p class="sub">Drag the handle. On the left is the picture as Figma exports it, on the right what Bonsai keeps.</p>
+    <div class="slider" id="slider" data-original="/assets/sample-original.jpg" data-compressed="/assets/sample-bonsai.jpg">
+      <div class="slider-page"></div>
+      <div class="slider-after"></div>
+      <div class="slide" aria-hidden="true">
+        <div class="slide-brand"><b>Haru Ceramics</b><span>Spring 2026</span></div>
+        <p class="slide-title">Stoneware for slow mornings</p>
+        <p class="slide-text">Twelve pieces thrown by hand in Mashiko and glazed in sage, clay and milk</p>
+        <div class="slide-stats"><div><b>12</b><span>pieces</span></div><div><b>3</b><span>glazes</span></div><div><b>$38</b><span>from</span></div></div>
+      </div>
+      <div class="callout is-text"><i></i><span>Text stays vector</span></div>
+      <div class="callout is-wall"><i></i><span>No bands on the wall</span></div>
+      <div class="slider-handle" role="slider" tabindex="0" aria-label="Compare original and compressed" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><i></i></div>
+      <span class="slider-tag is-left">Original, 352 KB</span>
+      <span class="slider-tag is-right">Bonsai, 34 KB</span>
+    </div>
+    <p class="caption">The same 2400 by 1500 pixels, encoded with the quality Recommended picks for this picture</p>
+  </section>
+
+  <section class="bento" id="bento">
+    <h2 class="reveal">Only the pictures get lighter</h2>
+    <div class="grid">
+
+      <article class="tile tile-wide reveal">
+        <div class="tile-text">
+          <h3>Text stays text</h3>
+          <p>Fonts, vectors, links, form fields, outlines and effects come out as the same objects they went in. You can still select, search and zoom forever.</p>
+        </div>
+        <div class="tile-art art-text" aria-hidden="true">
+          <div class="selection">
+            <span class="sel-line">Revenue grew in every</span>
+            <span class="sel-line">region <mark>this quarter</mark><i class="caret"></i></span>
+          </div>
+        </div>
+      </article>
+
+      <article class="tile reveal">
+        <div class="tile-art art-crop" aria-hidden="true">
+          <div class="crop-photo"></div>
+          <div class="crop-frame"></div>
+        </div>
+        <div class="tile-text">
+          <h3>Keeps what shows</h3>
+          <p>Design tools hide whole photos behind small frames. Bonsai keeps the part you can see.</p>
+        </div>
+      </article>
+
+      <article class="tile reveal">
+        <div class="tile-art art-bands" aria-hidden="true">
+          <div class="band-row"><span>Usual</span><i class="is-banded"></i></div>
+          <div class="band-row"><span>Bonsai</span><i></i></div>
+        </div>
+        <div class="tile-text">
+          <h3>Gradients stay smooth</h3>
+          <p>Glows, shadows and soft backgrounds keep their tone instead of breaking into stripes</p>
+        </div>
+      </article>
+
+      <article class="tile reveal">
+        <div class="tile-art art-same" aria-hidden="true">
+          <div class="same-chip"><svg viewBox="0 0 24 24"><path d="m14.72 8.79-4.29 4.3-1.65-1.65a1 1 0 1 0-1.41 1.41l2.35 2.36a1 1 0 0 0 1.41 0l5-5a1 1 0 0 0 0-1.42 1 1 0 0 0-1.41 0ZM12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8Z"/></svg>Already optimized</div>
+        </div>
+        <div class="tile-text">
+          <h3>Never makes it bigger</h3>
+          <p>When a file is already lean, you get your original back, byte for byte</p>
+        </div>
+      </article>
+
+      <article class="tile tile-wide reveal">
+        <div class="tile-text">
+          <h3>Opens everywhere</h3>
+          <p>Every result was checked page by page in seven PDF engines, the ones behind the apps your files end up in</p>
+        </div>
+        <div class="tile-art art-apps">
+          <p>Preview, Safari, Mail and Telegram on iPhone, Chrome, Edge, Android, Firefox and Linux viewers</p>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section class="presets reveal" id="presets">
+    <h2>How small<br>do you need it?</h2>
+    <p class="sub">The same 31.4 MB deck on each preset</p>
+    <div class="preset-picker" role="radiogroup" aria-label="Preset">
+      <button class="pp" role="radio" aria-checked="false" data-size="13.9" data-ppi="300 to 450 ppi" data-note="Visually identical even when zoomed in">
+        <i></i><b>Low compression</b><small>Highest quality, lighter file</small>
+      </button>
+      <button class="pp is-on" role="radio" aria-checked="true" data-size="5.9" data-ppi="150 to 200 ppi" data-note="Sharp with the page filling a Retina or 5K display">
+        <i></i><b>Recommended</b><small>Great quality, great compression</small>
+      </button>
+      <button class="pp" role="radio" aria-checked="false" data-size="4.2" data-ppi="110 to 150 ppi" data-note="Sized for an ordinary display, softer when zoomed">
+        <i></i><b>Extreme compression</b><small>Smallest file, reduced quality</small>
+      </button>
+    </div>
+    <div class="preset-result">
+      <div class="meter"><div class="meter-full"><span>31.4 MB</span></div><div class="meter-fill"><span class="js-preset-size">5.9 MB</span></div></div>
+      <p class="preset-note"><b class="js-preset-pct">-81%</b><span class="js-preset-note">Sharp with the page filling a Retina or 5K display</span><span class="js-preset-ppi">150 to 200 ppi</span></p>
+    </div>
+  </section>
+
+  <section class="facts reveal">
+    <div class="fact"><b>323 → 128 MB</b><span>18 real files from 13 different apps, Recommended preset</span></div>
+    <div class="fact"><b>About 4 s</b><span>per file, on every core of your Mac at once</span></div>
+    <div class="fact"><b>7 engines</b><span>render every result the same as the original</span></div>
+  </section>
+
+  <section class="install reveal" id="install">
+    <h2>Install in two steps</h2>
+    <div class="steps">
+      <div class="step">
+        <h3>Get the app</h3>
+        <p>Unzip and drop Bonsai into Applications. It is signed, notarized by Apple and keeps itself up to date.</p>
+        <a class="pill small js-download" href="https://github.com/finkoegor/Bonsai/releases/latest">Download for Mac</a>
+      </div>
+      <div class="step">
+        <h3>Add two free tools</h3>
+        <p>Bonsai compresses with qpdf and mozjpeg. Install them once with <a href="https://brew.sh">Homebrew</a>:</p>
+        <button class="command" id="command" type="button"><span>brew install qpdf mozjpeg</span><em>Copy</em></button>
+      </div>
+    </div>
+  </section>
+
+  <section class="faq reveal" id="faq">
+    <h2>Questions</h2>
+    <details>
+      <summary>Is it really free?</summary>
+      <p>Yes. Bonsai is open source under the MIT license, with no trial, no account and no watermark.</p>
+    </details>
+    <details>
+      <summary>Will my PDF still open everywhere?</summary>
+      <p>Images are saved as baseline JPEG, the form every PDF reader decodes, and every page is compared with the original before the file is saved. Results were checked in Preview, Safari, Chrome, Edge, Firefox, Mail and Telegram on iPhone, and the engines of Android and Linux viewers.</p>
+    </details>
+    <details>
+      <summary>What happens to my original?</summary>
+      <p>By default Bonsai saves a copy next to it. With Replace original, the original goes to the Trash only after the new file is safely written.</p>
+    </details>
+    <details>
+      <summary>Why does it need Homebrew?</summary>
+      <p>The heavy lifting is done by qpdf and mozjpeg, two proven open source tools. Bonsai runs them as separate programs, so they update on their own and the app stays small.</p>
+    </details>
+    <details>
+      <summary>Which files shrink the most?</summary>
+      <p>Decks, portfolios and reports exported from Figma, Keynote, PowerPoint, Canva or InDesign, where large photos sit behind small frames. Scans that are already low resolution shrink the least.</p>
+    </details>
+  </section>
+
+  <section class="final">
+    <div class="tree tree-small" id="final-tree" aria-hidden="true"></div>
+    <h2>Make your next PDF small</h2>
+    <a class="pill js-download" href="https://github.com/finkoegor/Bonsai/releases/latest">
+      <svg class="apple" viewBox="0 0 17 20" aria-hidden="true"><path d="M14.1 10.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9C3.6 4.8 2 5.8 1 7.4c-1.9 3.3-.5 8.2 1.4 10.9.9 1.3 2 2.8 3.4 2.7 1.4-.1 1.9-.9 3.5-.9s2.1.9 3.5.9c1.5 0 2.4-1.3 3.3-2.7 1-1.5 1.5-3 1.5-3.1-.1 0-2.9-1.1-3-4.3ZM11.5 3c.7-.9 1.2-2.1 1.1-3.3-1 0-2.3.7-3.1 1.6-.7.8-1.3 2-1.1 3.2 1.2.1 2.3-.6 3.1-1.5Z"/></svg>
+      Download for Mac
+    </a>
+    <p class="meta">Version <span class="js-version">1.3.0</span>, MIT license, made by <a href="https://github.com/finkoegor">Egor Finko</a></p>
+  </section>
+
+</main>
+</body>
+</html>
