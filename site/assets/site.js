@@ -1,4 +1,5 @@
 import { mountDemo } from './demo.js';
+import { mountMetal } from './metal.js';
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const root = document.documentElement;
@@ -125,8 +126,18 @@ function setupNumbers() {
   const counter = size.querySelector('.js-count');
   const dots = document.getElementById('dots');
   const FULL = 314, KEPT = 59;
-  dots.innerHTML = Array.from({ length: FULL }, (_, i) =>
-    `<i class="${i >= KEPT ? 'is-gone' : ''}" style="--d:${i >= KEPT ? Math.round((i - KEPT) * 2.2) : 0}"></i>`).join('');
+  dots.innerHTML = Array.from({ length: FULL }, (_, i) => `<i class="${i >= KEPT ? 'is-gone' : ''}"></i>`).join('');
+  // Rows go out from the bottom up, each from right to left.
+  function order() {
+    const cols = getComputedStyle(dots).gridTemplateColumns.split(' ').length;
+    const rows = Math.ceil(FULL / cols);
+    [...dots.children].forEach((dot, i) => {
+      const row = Math.floor(i / cols), col = i % cols;
+      dot.style.setProperty('--d', Math.round((rows - 1 - row) * 110 + (cols - 1 - col) * 11));
+    });
+  }
+  order();
+  window.addEventListener('resize', order);
   let current = 0;
   let value = 31.4;
   let run = 0;
@@ -146,12 +157,7 @@ function setupNumbers() {
 
   function show(index) {
     if (index === current) return;
-    if (index >= 1 && current === 0) {
-      count(5.9);
-      // The megabytes that are gone leave as sparks.
-      const w = dots.clientWidth, h = dots.clientHeight;
-      sparks(dots, 46, i => ({ x: rand(w * 0.12, w), y: rand(0, h), dx: rand(-14, 14), dy: rand(-70, -26), ms: rand(900, 1500), delay: i * 22, size: rand(2, 3) }));
-    }
+    if (index >= 1 && current === 0) count(5.9);
     if (index === 0) count(31.4);
     dots.classList.toggle('is-small', index >= 1);
     dots.classList.toggle('is-green', index === 2);
@@ -176,16 +182,19 @@ function setupNumbers() {
   });
 }
 
-// Accent buttons: the label rolls over on hover.
+// Accent buttons: letters roll over one by one, a chrome bezel flows around.
 function setupButtons() {
   document.querySelectorAll('.pill').forEach(pill => {
     const text = [...pill.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
-    if (!text) return;
-    const label = text.textContent.trim();
-    const roll = document.createElement('span');
-    roll.className = 'roll';
-    roll.innerHTML = `<span>${label}</span><span aria-hidden="true">${label}</span>`;
-    text.replaceWith(roll);
+    if (text) {
+      const label = text.textContent.trim();
+      const roll = document.createElement('span');
+      roll.className = 'roll';
+      roll.setAttribute('aria-label', label);
+      roll.innerHTML = [...label].map((c, i) => `<i aria-hidden="true" data-c="${c}" style="--i:${i}">${c}</i>`).join('');
+      text.replaceWith(roll);
+    }
+    mountMetal(pill, { reducedMotion: reducedMotion.matches });
   });
 }
 
