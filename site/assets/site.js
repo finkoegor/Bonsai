@@ -103,45 +103,101 @@ function setupStatement() {
   });
 }
 
-// Numbers: three beats on a pinned stage.
+// Small dots that fly off and fade: no blur, a couple of pixels each.
+function sparks(host, count, place) {
+  if (reducedMotion.matches) return;
+  for (let i = 0; i < count; i++) {
+    const dot = document.createElement('i');
+    dot.className = 'spark';
+    const s = place(i);
+    dot.style.cssText = `--l:${s.x}px;--t:${s.y}px;--sx:${s.dx}px;--sy:${s.dy}px;--sd:${s.ms}ms;--delay:${s.delay || 0}ms;--size:${s.size || 2}px`;
+    host.append(dot);
+    setTimeout(() => dot.remove(), s.ms + (s.delay || 0) + 100);
+  }
+}
+const rand = (a, b) => a + Math.random() * (b - a);
+
+// Numbers: the size falls while the page is pinned. One dot is 0.1 MB.
 function setupNumbers() {
   const section = document.getElementById('numbers');
   if (!section) return;
-  const beats = [...section.querySelectorAll('.big')];
-  const counter = beats[1].querySelector('.js-count');
+  const [size, percent] = section.querySelectorAll('.big');
+  const counter = size.querySelector('.js-count');
+  const dots = document.getElementById('dots');
+  const FULL = 314, KEPT = 59;
+  dots.innerHTML = Array.from({ length: FULL }, (_, i) =>
+    `<i class="${i >= KEPT ? 'is-gone' : ''}" style="--d:${i >= KEPT ? Math.round((i - KEPT) * 2.2) : 0}"></i>`).join('');
   let current = 0;
-  let counting = 0;
+  let value = 31.4;
+  let run = 0;
 
-  function count() {
-    const from = 31.4, to = 5.9, start = performance.now(), run = ++counting;
+  function count(to) {
+    const from = value, start = performance.now(), id = ++run;
+    if (reducedMotion.matches) { value = to; counter.textContent = to.toFixed(1); return; }
     const step = now => {
-      if (run !== counting) return;
+      if (id !== run) return;
       const p = clamp((now - start) / 1300);
-      const e = 1 - Math.pow(1 - p, 4);
-      counter.textContent = (from + (to - from) * e).toFixed(1);
+      value = from + (to - from) * (1 - Math.pow(1 - p, 4));
+      counter.textContent = value.toFixed(1);
       if (p < 1) requestAnimationFrame(step);
     };
-    if (reducedMotion.matches) { counter.textContent = to.toFixed(1); return; }
     requestAnimationFrame(step);
   }
 
   function show(index) {
     if (index === current) return;
-    beats.forEach((b, i) => {
-      b.classList.toggle('is-on', i === index);
-      b.classList.toggle('is-past', i < index);
-    });
-    if (index === 1 && current < 1) count();
-    if (index < 1) { counting++; counter.textContent = '31.4'; }
-    section.style.setProperty('--glow-on', index === 2 ? '1' : '.4');
+    if (index >= 1 && current === 0) {
+      count(5.9);
+      // The megabytes that are gone leave as sparks.
+      const w = dots.clientWidth, h = dots.clientHeight;
+      sparks(dots, 46, i => ({ x: rand(w * 0.12, w), y: rand(0, h), dx: rand(-14, 14), dy: rand(-70, -26), ms: rand(900, 1500), delay: i * 22, size: rand(1.5, 3) }));
+    }
+    if (index === 0) count(31.4);
+    dots.classList.toggle('is-small', index >= 1);
+    dots.classList.toggle('is-green', index === 2);
+    size.classList.toggle('is-on', index < 2);
+    size.classList.toggle('is-past', index === 2);
+    percent.classList.toggle('is-on', index === 2);
+    if (index === 2) {
+      const stack = percent.parentElement, w = stack.clientWidth, h = stack.clientHeight;
+      stack.style.setProperty('--spark', 'var(--green)');
+      sparks(stack, 22, i => {
+        const a = rand(0, Math.PI * 2), r = rand(40, 120);
+        return { x: w / 2 + Math.cos(a) * w * 0.16, y: h / 2 + Math.sin(a) * h * 0.3, dx: Math.cos(a) * r, dy: Math.sin(a) * r, ms: rand(800, 1300), delay: 250 + i * 14, size: rand(2, 3.5) };
+      });
+    }
     current = index;
   }
 
   onScroll(h => {
     const r = section.getBoundingClientRect();
     const p = clamp(-r.top / (r.height - h));
-    show(p < 0.3 ? 0 : p < 0.66 ? 1 : 2);
+    show(p < 0.28 ? 0 : p < 0.66 ? 1 : 2);
   });
+}
+
+// Accent buttons: colors wander under the fill, sparks rise from the mark.
+function setupButtons() {
+  const pills = [...document.querySelectorAll('.pill')];
+  pills.forEach(pill => {
+    pill.insertAdjacentHTML('afterbegin', '<span class="pill-colors"><i></i><i></i><i></i><i></i><i></i></span><span class="pill-fill"></span>');
+    const mark = pill.querySelector('.apple');
+    if (!mark) return;
+    let timer;
+    const emit = () => {
+      const p = pill.getBoundingClientRect(), m = mark.getBoundingClientRect();
+      const x = m.left - p.left + m.width / 2, y = m.top - p.top + m.height / 2;
+      sparks(pill, 3, () => ({ x: x + rand(-6, 6), y: y + rand(-7, 5), dx: rand(-11, 11), dy: rand(-16, -7), ms: rand(800, 1100), size: 1.5 }));
+    };
+    pill.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') { emit(); timer = setInterval(emit, 260); } });
+    pill.addEventListener('pointerleave', () => clearInterval(timer));
+  });
+  const wander = () => pills.forEach(pill => {
+    const w = pill.clientWidth / 2, h = pill.clientHeight / 2;
+    pill.querySelectorAll('.pill-colors i').forEach(c => { c.style.transform = `translate(${rand(-w, w)}px, ${rand(-h, h)}px)`; });
+  });
+  wander();
+  if (!reducedMotion.matches) setInterval(wander, 2000);
 }
 
 // Before and after.
@@ -263,6 +319,7 @@ setupHeader();
 setupWindowTilt();
 setupStatement();
 setupNumbers();
+setupButtons();
 setupSlider();
 setupPresets();
 setupCommand();
