@@ -110,7 +110,7 @@ function sparks(host, count, place) {
     const dot = document.createElement('i');
     dot.className = 'spark';
     const s = place(i);
-    dot.style.cssText = `--l:${s.x}px;--t:${s.y}px;--sx:${s.dx}px;--sy:${s.dy}px;--sd:${s.ms}ms;--delay:${s.delay || 0}ms;--size:${s.size || 2}px`;
+    dot.style.cssText = `--l:${Math.round(s.x)}px;--t:${Math.round(s.y)}px;--sx:${Math.round(s.dx)}px;--sy:${Math.round(s.dy)}px;--sd:${Math.round(s.ms)}ms;--delay:${Math.round(s.delay || 0)}ms;--size:${Math.round(s.size || 2)}px`;
     host.append(dot);
     setTimeout(() => dot.remove(), s.ms + (s.delay || 0) + 100);
   }
@@ -150,7 +150,7 @@ function setupNumbers() {
       count(5.9);
       // The megabytes that are gone leave as sparks.
       const w = dots.clientWidth, h = dots.clientHeight;
-      sparks(dots, 46, i => ({ x: rand(w * 0.12, w), y: rand(0, h), dx: rand(-14, 14), dy: rand(-70, -26), ms: rand(900, 1500), delay: i * 22, size: rand(1.5, 3) }));
+      sparks(dots, 46, i => ({ x: rand(w * 0.12, w), y: rand(0, h), dx: rand(-14, 14), dy: rand(-70, -26), ms: rand(900, 1500), delay: i * 22, size: rand(2, 3) }));
     }
     if (index === 0) count(31.4);
     dots.classList.toggle('is-small', index >= 1);
@@ -163,7 +163,7 @@ function setupNumbers() {
       stack.style.setProperty('--spark', 'var(--green)');
       sparks(stack, 22, i => {
         const a = rand(0, Math.PI * 2), r = rand(40, 120);
-        return { x: w / 2 + Math.cos(a) * w * 0.16, y: h / 2 + Math.sin(a) * h * 0.3, dx: Math.cos(a) * r, dy: Math.sin(a) * r, ms: rand(800, 1300), delay: 250 + i * 14, size: rand(2, 3.5) };
+        return { x: w / 2 + Math.cos(a) * w * 0.16, y: h / 2 + Math.sin(a) * h * 0.3, dx: Math.cos(a) * r, dy: Math.sin(a) * r, ms: rand(800, 1300), delay: 250 + i * 14, size: rand(2, 3) };
       });
     }
     current = index;
@@ -176,18 +176,17 @@ function setupNumbers() {
   });
 }
 
-// Accent buttons: colors wander under the fill.
+// Accent buttons: the label rolls over on hover.
 function setupButtons() {
-  const pills = [...document.querySelectorAll('.pill')];
-  pills.forEach(pill => {
-    pill.insertAdjacentHTML('afterbegin', '<span class="pill-colors"><i></i><i></i><i></i><i></i><i></i></span><span class="pill-fill"></span>');
+  document.querySelectorAll('.pill').forEach(pill => {
+    const text = [...pill.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
+    if (!text) return;
+    const label = text.textContent.trim();
+    const roll = document.createElement('span');
+    roll.className = 'roll';
+    roll.innerHTML = `<span>${label}</span><span aria-hidden="true">${label}</span>`;
+    text.replaceWith(roll);
   });
-  const wander = () => pills.forEach(pill => {
-    const w = pill.clientWidth / 2, h = pill.clientHeight / 2;
-    pill.querySelectorAll('.pill-colors i').forEach(c => { c.style.transform = `translate(${rand(-w, w)}px, ${rand(-h, h)}px)`; });
-  });
-  wander();
-  if (!reducedMotion.matches) setInterval(wander, 2000);
 }
 
 // Before and after.

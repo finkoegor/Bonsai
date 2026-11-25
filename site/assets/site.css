@@ -1,4 +1,6 @@
 :root {
+  --beam-edge: #b38bff;
+  --beam-core: #fff;
   --raised: #fff;
   --on-accent: #fff;
   --lilac: #efe3ff;
@@ -20,6 +22,8 @@
 }
 
 :root[data-theme="dark"] {
+  --beam-edge: #8f6fcc;
+  --beam-core: #5c34ab;
   --raised: #24222c;
   --on-accent: #0b0a10;
   --lilac: #1b1527;
@@ -94,8 +98,9 @@ section { padding: 0 var(--gutter); }
 .links a { padding: 8px 12px; border-radius: 999px; color: var(--ink2); text-decoration: none; font-size: 15px; transition: color .25s ease, background-color .25s ease; }
 .links a:hover { color: var(--ink); background: var(--plate); }
 
-/* Accent button: colors drift under a fill that leaves a 2px rim of them
-   showing. On hover the fill clears and the colors take the whole button. */
+/* Accent button: solid, with a thin beam of light that runs its edge on hover
+   and a label that rolls over. */
+@property --beam { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 .pill {
   position: relative;
   display: inline-flex;
@@ -105,39 +110,46 @@ section { padding: 0 var(--gutter); }
   height: 58px;
   padding: 0 28px;
   border-radius: 999px;
-  background: #5c34ab;
+  background: var(--ink);
   color: var(--bg);
   font-size: 17px;
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
-  overflow: hidden;
-  isolation: isolate;
-  transition: transform .5s var(--spring), color .4s ease;
+  transition: transform .5s var(--spring);
 }
-.pill-colors { position: absolute; inset: 0; z-index: -3; display: grid; place-items: center; transform: scale(1.1); transition: transform .5s ease; }
-.pill-colors i { position: absolute; width: 120px; height: 120px; border-radius: 50%; transition: transform 2s ease; }
-.pill-colors i:nth-child(1) { background: radial-gradient(closest-side, #b38bff, transparent); }
-.pill-colors i:nth-child(2) { background: radial-gradient(closest-side, #7341d6, transparent); }
-.pill-colors i:nth-child(3) { background: radial-gradient(closest-side, #9a6cf0, transparent); }
-.pill-colors i:nth-child(4) { background: radial-gradient(closest-side, #8f6fcc, transparent); }
-.pill-colors i:nth-child(5) { background: radial-gradient(closest-side, #d77fd0, transparent); }
-.pill-fill { position: absolute; inset: 2px; z-index: -2; border-radius: inherit; background: var(--ink); transition: opacity .5s ease, transform .5s ease; }
-.pill::after {
+.pill::before {
   content: "";
   position: absolute;
   inset: 0;
-  z-index: -1;
+  padding: 2px;
   border-radius: inherit;
-  background: radial-gradient(103% 135% at 65% 50%, transparent 27%, rgba(255, 255, 255, .28));
+  background: conic-gradient(from var(--beam),
+    transparent 0 52%,
+    color-mix(in srgb, var(--beam-edge) 25%, transparent) 60%,
+    var(--beam-edge) 68%,
+    var(--beam-core) 71%,
+    var(--beam-edge) 74%,
+    color-mix(in srgb, var(--beam-edge) 25%, transparent) 80%,
+    transparent 86% 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
   opacity: 0;
   transition: opacity .4s ease;
+  animation: beam 2.4s linear infinite paused;
+  pointer-events: none;
 }
-.pill:hover { color: #fff; transform: translateY(-1px); }
-.pill:hover .pill-fill { opacity: 0; transform: scale(.96); }
-.pill:hover .pill-colors { transform: scale(.9); }
-.pill:hover::after { opacity: 1; }
+.pill:hover { transform: translateY(-1px); }
+.pill:hover::before { opacity: 1; animation-play-state: running; }
 .pill:active { transform: scale(.98); }
+@keyframes beam { to { --beam: 360deg; } }
+
+.roll { display: inline-grid; overflow: hidden; line-height: 1.3; }
+.roll span { grid-area: 1 / 1; transition: transform .5s var(--ease); }
+.roll span + span { transform: translateY(110%); }
+.pill:hover .roll span { transform: translateY(-110%); }
+.pill:hover .roll span + span { transform: none; }
 .pill.small { height: 40px; padding: 0 18px; font-size: 15px; }
 .pill .apple { width: 19px; height: 19px; fill: currentColor; margin-top: -2px; }
 .bar .pill.small { margin-left: 6px; }
@@ -284,9 +296,10 @@ section { padding: 0 var(--gutter); }
   animation: spark var(--sd, 900ms) linear var(--delay, 0ms) both;
 }
 @keyframes spark {
-  0% { opacity: 0; transform: translate(0, 0) scale(.4); }
-  20% { opacity: 1; transform: translate(calc(var(--sx) * .2), calc(var(--sy) * .2)) scale(1); }
-  100% { opacity: 0; transform: translate(var(--sx), var(--sy)) scale(.6); }
+  0% { opacity: 0; transform: translate(0, 0); }
+  15% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--sx), var(--sy)); }
 }
 
 /* Before and after */
@@ -589,7 +602,8 @@ details p { padding: 0 0 24px; color: var(--ink2); max-width: 680px; }
   html { scroll-behavior: auto; }
   .reveal, .big, .lit .w, .tile *, .dots i { transition: none !important; }
   .spark { display: none; }
-  .pill-colors i { transition: none; }
+  .pill::before { animation: none; }
+  .roll span { transition: none; }
   .reveal { opacity: 1; transform: none; }
 }
 
