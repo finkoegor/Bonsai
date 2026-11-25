@@ -26,8 +26,14 @@
 <link rel="stylesheet" href="/assets/demo.css">
 <script>
   (function () {
+    var stored = null;
+    try { stored = localStorage.getItem('bonsai-theme'); } catch (e) {}
     var dark = window.matchMedia('(prefers-color-scheme: dark)');
-    function apply() { document.documentElement.dataset.theme = dark.matches ? 'dark' : 'light'; }
+    function apply() {
+      var chosen = null;
+      try { chosen = localStorage.getItem('bonsai-theme'); } catch (e) {}
+      document.documentElement.dataset.theme = chosen || (dark.matches ? 'dark' : 'light');
+    }
     apply();
     dark.addEventListener('change', apply);
   })();
@@ -57,6 +63,10 @@
       <a href="#presets">Presets</a>
       <a href="#faq">Questions</a>
     </div>
+    <button class="theme" id="theme-toggle" type="button" aria-label="Switch to dark mode">
+      <svg class="sun" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.6" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.5 1.5M14.2 14.2l1.5 1.5M4.3 15.7l1.5-1.5M14.2 5.8l1.5-1.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <svg class="moon" viewBox="0 0 20 20" aria-hidden="true"><path d="M15.5 12.3A6.5 6.5 0 0 1 7.7 4.5a6.5 6.5 0 1 0 7.8 7.8z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+    </button>
     <a class="pill small js-download" href="https://github.com/finkoegor/Bonsai/releases/latest">Download</a>
   </nav>
 </header>

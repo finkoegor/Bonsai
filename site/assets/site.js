@@ -1,5 +1,4 @@
 import { mountDemo } from './demo.js';
-import { mountMetal } from './metal.js';
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const root = document.documentElement;
@@ -64,6 +63,33 @@ function setupHeader() {
   window.addEventListener('scroll', update, { passive: true });
 }
 
+// Day and night: a stored choice wins over the system setting.
+function setupTheme() {
+  const button = document.getElementById('theme-toggle');
+  if (!button) return;
+  const label = () => button.setAttribute('aria-label', root.dataset.theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+  let timer;
+  // Safari 26 reads the toolbar tint from the top edge once; a short band makes it look again.
+  const retint = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      const band = document.createElement('div');
+      band.className = 'retint';
+      document.body.append(band);
+      setTimeout(() => band.remove(), 50);
+    }, 400);
+  };
+  label();
+  button.addEventListener('click', () => {
+    const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+    root.dataset.theme = next;
+    try { localStorage.setItem('bonsai-theme', next); } catch {}
+    label();
+    retint();
+  });
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { label(); retint(); });
+}
+
 // Scroll-linked pieces share one frame loop.
 const scrollers = [];
 function onScroll(fn) { scrollers.push(fn); }
@@ -82,9 +108,10 @@ function setupWindowTilt() {
   if (!tilt || reducedMotion.matches) return;
   onScroll(h => {
     const top = tilt.getBoundingClientRect().top;
-    const p = clamp((h - top) / (h * 0.75));
+    // Leans far back under the hero and stands up by the time it nears the top.
+    const p = clamp((h * 0.85 - top) / (h * 0.7));
     const e = 1 - Math.pow(1 - p, 3);
-    tilt.style.transform = `rotateX(${(1 - e) * 18}deg) scale(${0.92 + e * 0.08}) translateY(${(1 - e) * 30}px)`;
+    tilt.style.transform = `rotateX(${(1 - e) * 34}deg) scale(${0.86 + e * 0.14}) translateY(${(1 - e) * 50}px)`;
   });
 }
 
@@ -182,7 +209,7 @@ function setupNumbers() {
   });
 }
 
-// Accent buttons: letters roll over one by one, a chrome bezel flows around.
+// Accent buttons: letters roll over one by one.
 function setupButtons() {
   document.querySelectorAll('.pill').forEach(pill => {
     const text = [...pill.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
@@ -194,7 +221,6 @@ function setupButtons() {
       roll.innerHTML = [...label].map((c, i) => `<i aria-hidden="true" data-c="${c}" style="--i:${i}">${c}</i>`).join('');
       text.replaceWith(roll);
     }
-    mountMetal(pill, { reducedMotion: reducedMotion.matches });
   });
 }
 
@@ -314,6 +340,7 @@ function setupReveal() {
 }
 
 setupHeader();
+setupTheme();
 setupWindowTilt();
 setupStatement();
 setupNumbers();
