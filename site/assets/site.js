@@ -269,17 +269,3 @@ setupCommand();
 setupDownload();
 setupReveal();
 runScrollers();
-
-// Wheel scrolling glides on desktop; touch keeps the native feel.
-window.addEventListener('load', () => {
-  if (!window.Lenis || reducedMotion.matches || window.matchMedia('(pointer: coarse)').matches) return;
-  const lenis = new window.Lenis({ lerp: 0.1, smoothWheel: true });
-  const raf = time => { lenis.raf(time); requestAnimationFrame(raf); };
-  requestAnimationFrame(raf);
-  document.querySelectorAll('a[href^="#"]').forEach(a => a.addEventListener('click', e => {
-    const target = document.querySelector(a.getAttribute('href'));
-    if (!target) return;
-    e.preventDefault();
-    lenis.scrollTo(target, { offset: -40, duration: 1.2 });
-  }));
-});

@@ -384,42 +384,35 @@
 .doc-land { width: 156px; height: 88px; font-size: 9.75px; }
 .doc-port { width: 80px; height: 112px; font-size: 5px; }
 
-.doc-brand { background: #f2ede4; color: #16151c; }
-.doc-brand b { position: absolute; left: .9em; bottom: .7em; font-size: 2.1em; line-height: .9; font-weight: 800; letter-spacing: -.02em; }
-.doc-brand span { position: absolute; right: .9em; top: .8em; font-size: .7em; font-weight: 600; opacity: .9; }
-.doc-brand i { position: absolute; right: 1.2em; top: 1.9em; width: 4.4em; height: 4.4em; border-radius: 50%; background: #ff5a36; }
+.doc-brand { background: #0a0714 url(/assets/cover-photo.jpg) 70% 50% / cover; }
+.doc-brand span { position: absolute; left: 1em; top: .9em; font-size: .62em; font-weight: 600; }
+.doc-brand em { position: absolute; right: 1em; top: .9em; font-size: .62em; font-style: normal; opacity: .7; }
+.doc-brand b { position: absolute; left: .55em; top: 1.1em; font-size: 1.7em; line-height: 1; font-weight: 650; letter-spacing: -.02em; }
 
-.doc-investor { background: #0d1424; }
-.doc-investor span { position: absolute; left: .9em; top: .8em; font-size: .7em; font-weight: 600; opacity: .7; }
-.doc-investor b { position: absolute; left: .62em; top: 1.5em; font-size: 1.5em; font-weight: 700; letter-spacing: -.02em; }
-.doc-investor svg { position: absolute; left: 0; bottom: 0; width: 100%; height: 62%; }
+.doc-investor { background: #fff; color: #16151c; }
+.doc-investor span { position: absolute; left: 1em; top: .9em; font-size: .62em; color: #7a7a85; }
+.doc-investor b { position: absolute; left: .65em; top: 1.25em; font-size: 1.3em; line-height: 1.05; font-weight: 650; letter-spacing: -.02em; }
+.doc-investor .bars { position: absolute; left: 1em; right: 1em; bottom: .9em; height: 3.2em; display: flex; align-items: flex-end; gap: .5em; }
+.doc-investor .bars i { flex: 1; background: #16151c; border-radius: .12em .12em 0 0; }
+.doc-investor .bars i:nth-child(1) { height: 28%; } .doc-investor .bars i:nth-child(2) { height: 36%; }
+.doc-investor .bars i:nth-child(3) { height: 47%; } .doc-investor .bars i:nth-child(4) { height: 58%; }
+.doc-investor .bars i:nth-child(5) { height: 76%; } .doc-investor .bars i:nth-child(6) { height: 100%; background: #6366f1; }
 
-.doc-portfolio { background: #f4c9a8; }
-.doc-portfolio i { position: absolute; left: 0; right: 0; bottom: 0; height: 52%; background: #d0805c; clip-path: polygon(0 55%, 14% 30%, 26% 48%, 40% 12%, 55% 44%, 68% 26%, 82% 50%, 100% 22%, 100% 100%, 0 100%); }
-.doc-portfolio i + i { height: 34%; background: #7a3b2a; clip-path: polygon(0 40%, 20% 70%, 34% 35%, 50% 62%, 66% 30%, 84% 58%, 100% 40%, 100% 100%, 0 100%); }
-.doc-portfolio em { position: absolute; left: 58%; top: 18%; width: 1.8em; height: 1.8em; border-radius: 50%; background: #fff3e2; }
-.doc-portfolio b { position: absolute; left: .9em; bottom: .7em; font-size: .9em; font-weight: 600; }
+.doc-portfolio { background: #111114; }
+.doc-portfolio b { position: absolute; left: .6em; top: .55em; font-size: 1.6em; line-height: 1; font-weight: 500; letter-spacing: -.02em; }
+.doc-portfolio span { position: absolute; left: 1em; top: 4.6em; font-size: .62em; opacity: .55; }
 
-.doc-lookbook { background: #efe6da; color: #5a2f1f; }
-.doc-lookbook i { position: absolute; left: 3em; right: 3em; top: 3.2em; height: 12em; border-radius: 5em 5em 0 0; background: #c8714c; }
-.doc-lookbook b { position: absolute; left: 0; right: 0; bottom: 2.4em; text-align: center; font: italic 400 3.2em/1 Georgia, "Times New Roman", serif; }
-.doc-lookbook span { position: absolute; left: 0; right: 0; top: 1.2em; text-align: center; font-size: 1em; letter-spacing: .08em; }
+.doc-lookbook { background: #0a0714 url(/assets/cover-photo.jpg) 86% 60% / auto 180%; }
+.doc-lookbook b { position: absolute; left: .75em; top: .7em; font-size: 2.6em; line-height: 1; font-weight: 650; letter-spacing: -.02em; }
+.doc-lookbook span { position: absolute; left: 1.6em; top: 5.2em; font-size: 1.25em; opacity: .8; }
 
-.doc-thesis { background: #fff; color: #1d1d1f; padding: 2.4em 2em; }
-.doc-thesis b { display: block; font-size: 1.6em; line-height: 1.15; font-weight: 700; margin-bottom: 1.2em; }
-.doc-thesis i { display: block; height: .5em; margin-top: .9em; border-radius: .25em; background: #dcdce2; }
-.doc-thesis i:nth-of-type(3n) { width: 72%; }
-.doc-thesis em { display: block; height: 5em; margin: 1.4em 0 .4em; border-radius: .4em; background: linear-gradient(180deg, #e8e7ff, #f7f6ff); position: relative; overflow: hidden; }
-.doc-thesis em::after { content: ""; position: absolute; inset: 30% 8% 0; background: linear-gradient(90deg, #6366f1 0 14%, transparent 14% 22%, #8b5cf6 22% 36%, transparent 36% 44%, #6366f1 44% 58%, transparent 58% 66%, #a78bfa 66% 80%, transparent 80%); clip-path: polygon(0 60%, 14% 60%, 14% 100%, 0 100%, 22% 100%, 22% 20%, 36% 20%, 36% 100%, 44% 100%, 44% 45%, 58% 45%, 58% 100%, 66% 100%, 66% 0, 80% 0, 80% 100%, 0 100%); }
+.doc-thesis { background: #fff; color: #1d1d1f; text-align: center; padding: 3em 1.6em; font-family: "New York", ui-serif, Georgia, serif; display: flex; flex-direction: column; align-items: center; }
+.doc-thesis span { font-size: 1.05em; color: #6e6e76; }
+.doc-thesis b { margin-top: 1.6em; font-size: 1.9em; line-height: 1.15; font-weight: 600; }
+.doc-thesis em { margin: 1.2em 0 auto; font-size: 1.1em; }
 
-.doc-lease {
-  background:
-    repeating-linear-gradient(0deg, rgba(0, 0, 0, .025) 0 1px, transparent 1px 3px),
-    linear-gradient(170deg, #f6f2e8, #e9e3d4);
-  color: #3a3833;
-  padding: 2.6em 2em;
-}
-.doc-lease b { display: block; text-align: center; font-size: 1.4em; font-weight: 700; letter-spacing: .06em; margin-bottom: 1.6em; }
-.doc-lease i { display: block; height: .45em; margin-top: 1em; background: rgba(60, 55, 45, .32); border-radius: .2em; transform: rotate(-.4deg); }
-.doc-lease i:nth-of-type(4n) { width: 64%; }
-.doc-lease em { position: absolute; right: 2em; bottom: 2.4em; width: 6em; height: 6em; border-radius: 50%; border: .4em solid rgba(44, 86, 190, .55); transform: rotate(-14deg); }
+.doc-lease { background: #fff; color: #1d1d1f; padding: 2.6em 2em; }
+.doc-lease b { display: block; font-size: 1.5em; font-weight: 650; margin-bottom: 1.4em; }
+.doc-lease i { display: block; height: .34em; margin-top: .85em; background: #c9c9d0; border-radius: .2em; }
+.doc-lease i:nth-of-type(4n) { width: 62%; margin-bottom: 1.6em; }
+.doc-lease em { position: absolute; left: 2em; bottom: 2.4em; width: 7em; border-bottom: .2em solid #1d1d1f; }

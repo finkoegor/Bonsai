@@ -16,12 +16,12 @@ const icons = {
 };
 
 export const docs = {
-  brand: '<div class="doc doc-land doc-brand"><span>2026</span><i></i><b>Brand<br>Book</b></div>',
-  investor: '<div class="doc doc-land doc-investor"><span>Q3 update</span><b>+42%</b><svg viewBox="0 0 160 56" preserveAspectRatio="none"><defs><linearGradient id="dg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34d399" stop-opacity=".45"/><stop offset="1" stop-color="#34d399" stop-opacity="0"/></linearGradient></defs><path d="M0 50 L20 44 L38 47 L58 34 L78 37 L98 24 L118 27 L138 12 L160 6 L160 56 L0 56Z" fill="url(#dg)"/><path d="M0 50 L20 44 L38 47 L58 34 L78 37 L98 24 L118 27 L138 12 L160 6" fill="none" stroke="#34d399" stroke-width="2"/></svg></div>',
-  portfolio: '<div class="doc doc-land doc-portfolio"><em></em><i></i><i></i><b>Anna Kim, works</b></div>',
-  lookbook: '<div class="doc doc-port doc-lookbook"><span>SS 26</span><i></i><b>Spring</b></div>',
-  thesis: '<div class="doc doc-port doc-thesis"><b>Light and shade in early print</b><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i></div>',
-  lease: '<div class="doc doc-port doc-lease"><b>LEASE</b><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em></div>',
+  brand: '<div class="doc doc-land doc-brand"><span>Aura</span><b>Brand book</b><em>2026</em></div>',
+  investor: '<div class="doc doc-land doc-investor"><span>Q3 2026</span><b>Investor update</b><div class="bars"><i></i><i></i><i></i><i></i><i></i><i></i></div></div>',
+  portfolio: '<div class="doc doc-land doc-portfolio"><b>Anna Kim</b><span>Selected work, 2021 to 2026</span></div>',
+  lookbook: '<div class="doc doc-port doc-lookbook"><b>Aura</b><span>Lookbook, spring</span></div>',
+  thesis: '<div class="doc doc-port doc-thesis"><span>University of Leeds</span><b>Light and shade in early print</b><em>Doctoral thesis</em><span>2026</span></div>',
+  lease: '<div class="doc doc-port doc-lease"><b>Lease agreement</b><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em></div>',
 };
 
 const files = [

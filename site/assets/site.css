@@ -576,8 +576,6 @@ details p { padding: 0 0 24px; color: var(--ink2); max-width: 680px; }
 .callout.is-wall { left: 62%; top: 66%; }
 .caption { margin-top: 18px; color: var(--ink3); font-size: 14px; }
 
-html.lenis, html.lenis body { height: auto; }
-.lenis.lenis-smooth { scroll-behavior: auto !important; }
 
 @media (max-width: 720px) {
   .callout { display: none; }
