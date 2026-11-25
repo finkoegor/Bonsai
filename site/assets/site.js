@@ -227,6 +227,16 @@ function setupButtons() {
   });
 }
 
+// Small drawings above the three facts.
+function setupFacts() {
+  const mb = document.querySelector('.art-mb');
+  if (!mb) return;
+  // 32 dots for 323 MB, 13 stay for 128 MB; the rest go out right to left.
+  mb.innerHTML = Array.from({ length: 32 }, (_, i) => `<i class="${i >= 13 ? 'is-gone' : ''}" style="--d:${i >= 13 ? 300 + (31 - i) * 45 : 300}"></i>`).join('');
+  document.querySelector('.art-cores').innerHTML = Array.from({ length: 8 }, (_, i) => `<i style="--d:${[0, 2300, 900, 3100, 1500, 400, 2700, 1900][i]}"></i>`).join('');
+  document.querySelector('.art-engines').innerHTML = Array.from({ length: 7 }, (_, i) => `<i style="--d:${300 + i * 160}"></i>`).join('');
+}
+
 // Before and after.
 function setupSlider() {
   const slider = document.getElementById('slider');
@@ -347,6 +357,7 @@ setupTheme();
 setupWindowTilt();
 setupStatement();
 setupNumbers();
+setupFacts();
 setupButtons();
 setupSlider();
 setupPresets();
