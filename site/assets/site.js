@@ -106,6 +106,8 @@ function runScrollers() {
 function setupWindowTilt() {
   const tilt = document.getElementById('window-tilt');
   if (!tilt || reducedMotion.matches) return;
+  // Browsers with scroll timelines do it in CSS; touch screens keep the window flat.
+  if (CSS.supports('animation-timeline: view()') || !window.matchMedia('(pointer: fine)').matches) return;
   onScroll(h => {
     const top = tilt.getBoundingClientRect().top;
     // Leans far back under the hero and stands up by the time it nears the top.

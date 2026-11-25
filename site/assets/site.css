@@ -84,9 +84,7 @@ section { padding: 0 var(--gutter); }
 }
 .is-scrolled .bar {
   max-width: 720px;
-  background: color-mix(in srgb, var(--raised) 82%, transparent);
-  -webkit-backdrop-filter: saturate(1.6) blur(18px);
-  backdrop-filter: saturate(1.6) blur(18px);
+  background: color-mix(in srgb, var(--raised) 94%, transparent);
 }
 .logo { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 17px; text-decoration: none; letter-spacing: -.015em; }
 .logo img { width: 30px; height: 30px; }
@@ -202,6 +200,17 @@ section { padding: 0 var(--gutter); }
   background: var(--lilac);
   transform-origin: 50% 0;
   will-change: transform;
+}
+/* The window leans back and stands up as it scrolls in. Tied to the scroll by
+   the browser itself, so it never trails a frame behind the page. */
+@keyframes stand {
+  from { transform: rotateX(34deg) scale(.86) translateY(50px); }
+  to { transform: none; }
+}
+@supports (animation-timeline: view()) {
+  @media (pointer: fine) and (prefers-reduced-motion: no-preference) {
+    .window-tilt { animation: stand ease-out both; animation-timeline: view(); animation-range: entry 0% cover 45%; }
+  }
 }
 .demo { position: relative; width: 100%; margin: 0 auto; max-width: 1000px; }
 
