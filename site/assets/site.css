@@ -393,18 +393,13 @@ section { padding: 0 var(--gutter); }
 .caret { display: inline-block; width: 2px; height: .95em; margin-left: 1px; vertical-align: -.12em; background: var(--accent); animation: caret 1.1s steps(2) infinite; }
 @keyframes caret { 50% { opacity: 0; } }
 
+/* The photo, a flat veil over it, and the kept part on top, cut to the frame. */
+.art-crop { --crop: 25% 12% 25% 48%; }
 .art-crop .crop-photo { position: absolute; inset: 0; background: url(/assets/cover-photo.jpg) center / cover; }
-.art-crop .crop-frame {
-  position: absolute;
-  width: 40%;
-  height: 50%;
-  left: 48%;
-  top: 25%;
-  border-radius: 4px;
-  box-shadow: 0 0 0 2px #fff, 0 0 0 999px rgba(0, 0, 0, 0);
-  transition: box-shadow 1.2s ease .6s;
-}
-.tile.is-in .art-crop .crop-frame { box-shadow: 0 0 0 2px #fff, 0 0 0 999px color-mix(in srgb, var(--bg) 86%, transparent); }
+.art-crop .crop-veil { position: absolute; inset: 0; background: var(--bg); opacity: 0; transition: opacity 1.2s ease .6s; }
+.art-crop .crop-kept { clip-path: inset(var(--crop) round 4px); }
+.art-crop .crop-frame { position: absolute; inset: 25% 12% 25% 48%; border-radius: 4px; box-shadow: 0 0 0 2px #fff; }
+.tile.is-in .art-crop .crop-veil { opacity: .86; }
 
 .art-bands { display: grid; gap: 16px; align-content: center; place-items: stretch; padding: 28px; }
 .band-row { display: grid; grid-template-columns: 56px 1fr; align-items: center; gap: 12px; font-size: 13px; color: var(--ink2); }
