@@ -31,6 +31,7 @@
   font: 13px/1.25 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   letter-spacing: 0;
   box-shadow: 0 0 0 .5px rgba(0, 0, 0, .18), 0 30px 70px -30px rgba(0, 0, 0, .3), 0 10px 24px -14px rgba(0, 0, 0, .2);
+  text-align: left;
   transform-origin: 0 0;
   user-select: none;
   -webkit-user-select: none;
