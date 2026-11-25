@@ -270,8 +270,9 @@ section { padding: 0 var(--gutter); }
   border-radius: 50%;
   background: var(--ink);
   transition: opacity .7s ease, background-color .5s ease;
-  transition-delay: calc(var(--d) * 1ms), 0s;
+  transition-delay: calc(var(--r) * 1ms), 0s;
 }
+.dots.is-small i { transition-delay: calc(var(--d) * 1ms), 0s; }
 .dots.is-small i.is-gone { opacity: .13; }
 .dots.is-green i:not(.is-gone) { background: var(--green); }
 

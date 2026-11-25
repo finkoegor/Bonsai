@@ -158,9 +158,12 @@ function setupNumbers() {
   function order() {
     const cols = getComputedStyle(dots).gridTemplateColumns.split(' ').length;
     const rows = Math.ceil(FULL / cols);
+    const first = Math.floor(KEPT / cols);
     [...dots.children].forEach((dot, i) => {
       const row = Math.floor(i / cols), col = i % cols;
       dot.style.setProperty('--d', Math.round((rows - 1 - row) * 110 + (cols - 1 - col) * 11));
+      // Coming back they light up the other way: top down, left to right.
+      dot.style.setProperty('--r', Math.max(0, Math.round((row - first) * 110 + col * 11)));
     });
   }
   order();
