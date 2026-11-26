@@ -416,3 +416,5 @@
 .doc-lease i { display: block; height: .34em; margin-top: .85em; background: #c9c9d0; border-radius: .2em; }
 .doc-lease i:nth-of-type(4n) { width: 62%; margin-bottom: 1.6em; }
 .doc-lease em { position: absolute; left: 2em; bottom: 2.4em; width: 7em; border-bottom: .2em solid #1d1d1f; }
+.app.is-compact .app-done { inset: 0; gap: 6px; padding: 10px 12px; align-content: center; }
+.app.is-compact .app-done .check { width: 36px; height: 36px; }

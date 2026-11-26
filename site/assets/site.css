@@ -493,7 +493,13 @@ section { padding: 0 var(--gutter); }
   margin: clamp(120px, 14vw, 180px) auto 0;
   gap: 10px;
 }
-.fact { padding: 36px; border-radius: 28px; background: var(--plate); }
+.fact { min-width: 0; padding: 36px; border-radius: 28px; background: var(--plate); }
+@media (max-width: 1000px) and (min-width: 721px) {
+  .fact { padding: 28px 24px; }
+  .art-engines { gap: 4px; }
+  .art-engines i { width: 18px; height: 25px; }
+  .fact b { font-size: clamp(24px, 3.4vw, 28px); }
+}
 .fact-art { display: flex; align-items: flex-end; gap: 4px; height: 36px; margin-bottom: 28px; }
 
 /* One dot is 10 MB: 32 go in, 13 stay. */
